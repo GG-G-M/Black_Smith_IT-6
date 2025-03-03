@@ -3,17 +3,20 @@
 $conn = new mysqli("localhost", "root", "", "inventory_system");
 if ($conn->connect_error) die("Connection failed: " . $conn->connect_error);
 
-// Fetch materials & supplier
-$materials_sql = "SELECT * FROM materials 
+// Fetch materials with supplier names
+$materials_sql = "SELECT materials.id, materials.material_name, suppliers.supplier_name, materials.items 
+                  FROM materials 
                   JOIN suppliers ON materials.supplier_id = suppliers.supplier_id";
 $material_result = $conn->query($materials_sql);
+
+// Fetch suppliers for forms
 $supplier_sql = "SELECT * FROM suppliers";
 $supplier_result = $conn->query($supplier_sql);
 
-// Handle Add Supplier
+// Handle Add Supplier using stored procedure
 if (isset($_POST['add_supplier'])) {
     if (!empty($_POST['supplier_name']) && !empty($_POST['supplier_contact'])) {
-        $stmt = $conn->prepare("INSERT INTO suppliers (supplier_name, supplier_contact) VALUES (?, ?)");
+        $stmt = $conn->prepare("CALL AddSupplier(?, ?)");
         $stmt->bind_param("ss", $_POST['supplier_name'], $_POST['supplier_contact']);
         $stmt->execute();
         $stmt->close();
@@ -22,28 +25,38 @@ if (isset($_POST['add_supplier'])) {
     exit;
 }
 
-// Handle Edit Supplier
+// Handle Edit Supplier using stored procedure
 if (isset($_POST['edit_supplier'])) {
-    $stmt = $conn->prepare("UPDATE suppliers SET supplier_name = ?, supplier_contact = ? WHERE supplier_id = ?");
+    $stmt = $conn->prepare("CALL EditSupplier(?, ?, ?)");
     $stmt->bind_param("ssi", $_POST['supplier_name'], $_POST['supplier_contact'], $_POST['supplier_id']);
     $stmt->execute();
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
 
-// Handle Delete Supplier
+// // Handle Delete Supplier using stored procedure
+// if (isset($_POST['delete_supplier'])) {
+//     if (!empty($_POST['supplier_id'])) {
+//         $stmt = $conn->prepare("CALL DeleteSupplier(?)");
+//         $stmt->bind_param("i", $_POST['supplier_id']);
+//         $stmt->execute();
+//         $stmt->close();
+//     }
+//     header("Location: " . $_SERVER['PHP_SELF']);
+//     exit;
+// }
+
+// Handle Delete Material using stored procedure
 if (isset($_POST['delete_supplier'])) {
-    if (!empty($_POST['supplier_id'])) {
-        $stmt = $conn->prepare("DELETE FROM suppliers WHERE supplier_id = ?");
-        $stmt->bind_param("i", $_POST['supplier_id']);
-        $stmt->execute();
-        $stmt->close();
-    }
+    $stmt = $conn->prepare("CALL DeleteSupplier(?)");
+    $stmt->bind_param("i", $_POST['supplier_id']);
+    $stmt->execute();
+    $stmt->close();
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
 
-// Handle Add Material
+// Handle Add Material using stored procedure
 if (isset($_POST['add_material'])) {
     if (!empty($_POST['supplier_id']) && !empty($_POST['material_name']) && !empty($_POST['items'])) {
         $stmt = $conn->prepare("CALL AddMaterial(?, ?, ?)");
@@ -55,7 +68,7 @@ if (isset($_POST['add_material'])) {
     exit;
 }
 
-// Edit Material
+// Handle Edit Material using stored procedure
 if (isset($_POST['edit_material'])) {
     $stmt = $conn->prepare("CALL EditMaterial(?, ?, ?, ?)");
     $stmt->bind_param("siii", $_POST['material_name'], $_POST['supplier_id'], $_POST['items'], $_POST['id']);
@@ -64,9 +77,7 @@ if (isset($_POST['edit_material'])) {
     exit;
 }
 
-
-
-// Handle Delete Material
+// Handle Delete Material using stored procedure
 if (isset($_POST['delete_material'])) {
     $stmt = $conn->prepare("CALL DeleteMaterial(?)");
     $stmt->bind_param("i", $_POST['material_id']);
@@ -76,6 +87,7 @@ if (isset($_POST['delete_material'])) {
     exit;
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -131,16 +143,19 @@ if (isset($_POST['delete_material'])) {
                         <td><?php echo $row['items']; ?></td>
                         <td>
                             <button class="btn btn-success btn-sm edit_material-btn" 
-                            data-id="<?php echo $row['id']; ?>" 
-                            data-material="<?php echo $row['material_name']; ?>" 
-                            data-supplier="<?php echo $row['supplier_name']; ?>" 
-                            data-items="<?php echo $row['items']; ?>">
-                                <i class="bi bi-pencil-square"></i>&nbsp;Edit
+                                data-id="<?php echo $row['id']; ?>" 
+                                data-material="<?php echo $row['material_name']; ?>" 
+                                data-supplier="<?php echo $row['supplier_name']; ?>" 
+                                data-items="<?php echo $row['items']; ?>">
+                                    <i class="bi bi-pencil-square"></i>&nbsp;Edit
                             </button>
-                            <button class="btn btn-danger btn-sm delete_material-btn"
-                            data-id="<?php echo $row['id']; ?>">
-                                <i class="bi bi-trash3"></i>&nbsp;Delete
-                            </button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this material?');">
+                                <input type="hidden" name="delete_material" value="1">
+                                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-trash3"></i>&nbsp;Delete
+                                </button>
+                            </form>
                         </td>
                     </tr>
                 <?php } ?>
@@ -184,8 +199,19 @@ if (isset($_POST['delete_material'])) {
                                 <td><?php echo $supplier['supplier_name']; ?></td>
                                 <td><?php echo $supplier['supplier_contact']; ?></td>
                                 <td>
-                                    <button class="btn btn-warning btn-sm edit-supplier" data-id="<?php echo $supplier['supplier_id']; ?>" data-name="<?php echo $supplier['supplier_name']; ?>" data-contact="<?php echo $supplier['supplier_contact']; ?>">Edit</button>
-                                    <button class="btn btn-danger btn-sm delete-supplier" data-id="<?php echo $supplier['supplier_id']; ?>">Delete</button>
+                                    <button class="btn btn-warning btn-sm edit-supplier" 
+                                            data-id="<?php echo $supplier['supplier_id']; ?>" 
+                                            data-name="<?php echo htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                            data-contact="<?php echo htmlspecialchars($supplier['supplier_contact'], ENT_QUOTES, 'UTF-8'); ?>">
+                                        Edit
+                                    </button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this supplier?');">
+                                        <input type="hidden" name="delete_supplier" value="1">
+                                        <input type="hidden" name="supplier_id" value="<?php echo $supplier['supplier_id']; ?>">
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            <i class="bi bi-trash3"></i>&nbsp;Delete
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php } ?>
@@ -297,26 +323,6 @@ if (isset($_POST['delete_material'])) {
     </div>
 </div>
 
-
-<!-- Delete Material Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                Are you sure you want to delete this material?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger" id="confirmDelete"><i class="bi bi-trash3"></i>&nbsp;Delete</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-arrow-return-right"></i>&nbsp;Cancel</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Scripts -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -324,7 +330,7 @@ if (isset($_POST['delete_material'])) {
 <script>
     $(document).ready(function() {
 
-// Open Edit Supplier Modal and pre-fill form fields
+//Edit Supplier Modal
 $(document).on("click", ".edit-supplier", function() {
     let supplierId = $(this).data("id");
     let supplierName = $(this).data("name");
@@ -336,15 +342,15 @@ $(document).on("click", ".edit-supplier", function() {
     $("#editSupplierModal").modal("show");
 });
 
-    // Handle Edit Supplier Form Submission via AJAX
+    // Handle Edit Supplier Form Submission
     $("#editSupplierForm").submit(function(e) {
         e.preventDefault();
         $.ajax({
-            url: "", // Submits to the same page; change if you use a different handler
+            url: "",
             type: "POST",
-            data: $(this).serialize() + "&edit_supplier=1", // add a flag to trigger the supplier update PHP block
+            data: $(this).serialize() + "&edit_supplier=1",
             success: function(response) {
-                location.reload(); // Refresh page to show updated supplier data
+                location.reload(); 
             }
         });
     });
@@ -360,7 +366,7 @@ $(document).on("click", ".edit-supplier", function() {
                     type: "POST",
                     data: $(this).serialize(),
                     success: function(response) {
-                        location.reload(); // Refresh to update the materials list
+                        location.reload(); 
                     }
                 });
             });
@@ -369,34 +375,16 @@ $(document).on("click", ".edit-supplier", function() {
         $(document).on("click", ".edit_material-btn", function() {
             let materialId = $(this).data("id");
             let materialName = $(this).data("material");
-            let supplierId = $(this).data("supplier"); // Changed to supplier_id
+            let supplierId = $(this).data("supplier");
             let items = $(this).data("items");
 
             $("#editMaterialId").val(materialId);
             $("#editMaterialName").val(materialName);
-            $("#editSupplierId").val(supplierId); // Set select value
+            $("#editSupplierId").val(supplierId);
             $("#editItems").val(items);
             $("#editMaterialModal").modal("show");
         });
 
-
-        // Delete Material
-        $(document).on("click", ".delete_material-btn", function() {
-            let materialId = $(this).data("id");
-            if (confirm("Are you sure you want to delete this material?")) {
-                $.ajax({
-                    url: window.location.href,
-                    type: "POST",
-                    data: { 
-                        delete_material: true,
-                        material_id: materialId 
-                    },
-                    success: function() {
-                        location.reload();
-                    }
-                });
-            }
-        });
     });
 </script>
 
