@@ -21,80 +21,53 @@
     <a href="materials.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-nut-fill"></i><br>Materials</a>
     <a href="orders.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-basket-fill"></i><br>Orders</a>
     <a href="sales.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-receipt"></i><br>Sales</a>
-    <button class="logout-btn"><a href="login.php" style="color: white; text-decoration: none;"><i class="bi bi-box-arrow-left"></i>&nbsp;LogOut</a></button>
+    <button class="logout-btn"><a href="../Handler/logout_handler.php" style="color: white; text-decoration: none;"><i class="bi bi-box-arrow-left"></i>&nbsp;LogOut</a></button>
 </nav>
 
 <!-- Main -->
 <div class="content">
     <h3 class="text-primary">Product</h3>
-
-    <!-- Controls -->
-    <div class="d-flex justify-content-between mb-3">
-        <input type="text" class="form-control w-25" placeholder="🔍 Quick search">
-        <div>
-            <button class="btn btn-primary">+ Create Stock</button>
-            <button class="btn btn-outline-secondary">Sort ▼</button>
-        </div>
+    <div class="mb-3">
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal"><i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Create Product</button>
     </div>
 
-    <!--Table -->
+    <!-- Data Table -->
     <div class="table-container">
-        <table class="table table-hover">
+        <table id="materialsTable" class="table table-hover">
             <thead>
                 <tr>
-                    <th><input type="checkbox"></th>
                     <th>ID</th>
-                    <th>Product</th>
-                    <th>Category</th>
+                    <th>Material</th>
+                    <th>Supplier</th>
                     <th>Items</th>
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr>
-                    <td><input type="checkbox"></td>
-                    <td>#0001</td>
-                    <td>Shovel</td>
-                    <td>Digging Tools</td>
-                    <td>100</td>
-                    <td>
-                        <button class="btn btn-success"><i class="bi bi-pencil-square"></i>&nbsp;Edit</button>
-                        <button class="btn btn-danger"><i class="bi bi-trash3"></i>&nbsp;Delete</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td><input type="checkbox"></td>
-                    <td>#0002</td>
-                    <td>Clamp</td>
-                    <td>Gripping Tools</td>
-                    <td>100</td>
-                    <td>
-                        <button class="btn btn-success"><i class="bi bi-pencil-square"></i>&nbsp;Edit</button>
-                        <button class="btn btn-danger"><i class="bi bi-trash3"></i>&nbsp;Delete</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td><input type="checkbox"></td>
-                    <td>#0003</td>
-                    <td>Hammer</td>
-                    <td>Striking Tools</td>
-                    <td>100</td>
-                    <td>
-                        <button class="btn btn-success"><i class="bi bi-pencil-square"></i>&nbsp;Edit</button>
-                        <button class="btn btn-danger"><i class="bi bi-trash3"></i>&nbsp;Delete</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td><input type="checkbox"></td>
-                    <td>#0004</td>
-                    <td>Knife</td>
-                    <td>Cutting Tools</td>
-                    <td>100</td>
-                    <td>
-                        <button class="btn btn-success"><i class="bi bi-pencil-square"></i>&nbsp;Edit</button>
-                        <button class="btn btn-danger"><i class="bi bi-trash3"></i>&nbsp;Delete</button>
-                    </td>
-                </tr>
+            <tbody id="materialsList">
+                <?php while ($row = $material_result->fetch_assoc()) { ?>
+                    <tr>
+                        <td>#<?php echo $row['id']; ?></td>
+                        <td><?php echo $row['material_name']; ?></td>
+                        <td><?php echo $row['supplier_name']; ?></td>
+                        <td><?php echo $row['items']; ?></td>
+                        <td>
+                            <button class="btn btn-success btn-sm edit_material-btn" 
+                                data-id="<?php echo $row['id']; ?>" 
+                                data-material="<?php echo $row['material_name']; ?>" 
+                                data-supplier="<?php echo $row['supplier_name']; ?>" 
+                                data-items="<?php echo $row['items']; ?>">
+                                    <i class="bi bi-pencil-square"></i>&nbsp;Edit
+                            </button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this material?');">
+                                <input type="hidden" name="delete_material" value="1">
+                                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-trash3"></i>&nbsp;Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php } ?>
             </tbody>
         </table>
     </div>

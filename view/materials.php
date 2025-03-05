@@ -111,7 +111,7 @@ if (isset($_POST['delete_material'])) {
     <a href="materials.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-nut-fill"></i><br>Materials</a>
     <a href="orders.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-basket-fill"></i><br>Orders</a>
     <a href="sales.php" class="nav-link" style="color:whitesmoke;"><i class="bi bi-receipt"></i><br>Sales</a>
-    <button class="logout-btn"><a href="login.php" style="color: white; text-decoration: none;"><i class="bi bi-box-arrow-left"></i>&nbsp;LogOut</a></button>
+    <button class="logout-btn"><a href="../Handler/logout_handler.php" style="color: white; text-decoration: none;"><i class="bi bi-box-arrow-left"></i>&nbsp;LogOut</a></button>
 </nav>
 
 <!-- Main Content-->
@@ -212,6 +212,16 @@ if (isset($_POST['delete_material'])) {
                                             <i class="bi bi-trash3"></i>&nbsp;Delete
                                         </button>
                                     </form>
+                                    <button class="btn btn-primary btn-sm info-supplier" 
+          data-id="<?php echo $supplier['supplier_id']; ?>" 
+          data-name="<?php echo htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
+          data-contact="<?php echo htmlspecialchars($supplier['supplier_contact'], ENT_QUOTES, 'UTF-8'); ?>"
+          data-created-by="<?php echo $supplier['created_by']; ?>"
+          data-created-at="<?php echo $supplier['created_at']; ?>"
+          data-updated-by="<?php echo $supplier['updated_by']; ?>"
+          data-updated-at="<?php echo $supplier['updated_at']; ?>">
+      Info
+  </button>
                                 </td>
                             </tr>
                         <?php } ?>
@@ -247,6 +257,31 @@ if (isset($_POST['delete_material'])) {
         </div>
     </div>
 </div>
+
+<!-- Info Supplier Modal -->
+<div class="modal fade" id="infoSupplierModal" tabindex="-1" aria-labelledby="infoSupplierModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoSupplierModalLabel">Supplier Info</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>ID:</strong> <span id="infoSupplierId"></span></p>
+        <p><strong>Supplier Name:</strong> <span id="infoSupplierName"></span></p>
+        <p><strong>Contact:</strong> <span id="infoSupplierContact"></span></p>
+        <p><strong>Created By:</strong> <span id="infoCreatedBy"></span></p>
+        <p><strong>Created At:</strong> <span id="infoCreatedAt"></span></p>
+        <p><strong>Updated By:</strong> <span id="infoUpdatedBy"></span></p>
+        <p><strong>Updated At:</strong> <span id="infoUpdatedAt"></span></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <!-- Add Material Modal -->
 <div class="modal fade" id="addMaterialModal" tabindex="-1" aria-labelledby="addMaterialModalLabel" aria-hidden="true">
@@ -354,6 +389,19 @@ $(document).on("click", ".edit-supplier", function() {
             }
         });
     });
+
+$(document).on("click", ".info-supplier", function(){
+    $("#infoSupplierId").text($(this).data("id"));
+    $("#infoSupplierName").text($(this).data("name"));
+    $("#infoSupplierContact").text($(this).data("contact"));
+    $("#infoCreatedBy").text($(this).data("created-by") ? $(this).data("created-by") : "N/A");
+    $("#infoCreatedAt").text($(this).data("created-at") ? $(this).data("created-at") : "N/A");
+    $("#infoUpdatedBy").text($(this).data("updated-by") ? $(this).data("updated-by") : "N/A");
+    $("#infoUpdatedAt").text($(this).data("updated-at") ? $(this).data("updated-at") : "N/A");
+    $("#infoSupplierModal").modal("show");
+});
+
+
             
             // Initialize DataTable
             $('#materialsTable').DataTable();

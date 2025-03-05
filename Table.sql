@@ -6,14 +6,22 @@ CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    full_name VARCHAR(255) NOT NULL
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL
 );
 
 -- Suppliers Table
 CREATE TABLE suppliers (
     supplier_id INT AUTO_INCREMENT PRIMARY KEY,
     supplier_name VARCHAR(255) NOT NULL,
-    supplier_contact VARCHAR(255) NOT NULL
+    supplier_contact VARCHAR(255) NOT NULL,
+    created_by INT,
+    created_at DATE,
+    updated_by INT,
+    updated_at DATE,
+    CONSTRAINT fk_supplier_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_supplier_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Materials Table with Foreign Key
