@@ -213,15 +213,15 @@ if (isset($_POST['delete_material'])) {
                                         </button>
                                     </form>
                                     <button class="btn btn-primary btn-sm info-supplier" 
-          data-id="<?php echo $supplier['supplier_id']; ?>" 
-          data-name="<?php echo htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
-          data-contact="<?php echo htmlspecialchars($supplier['supplier_contact'], ENT_QUOTES, 'UTF-8'); ?>"
-          data-created-by="<?php echo $supplier['created_by']; ?>"
-          data-created-at="<?php echo $supplier['created_at']; ?>"
-          data-updated-by="<?php echo $supplier['updated_by']; ?>"
-          data-updated-at="<?php echo $supplier['updated_at']; ?>">
-      Info
-  </button>
+                                            data-id="<?php echo $supplier['supplier_id']; ?>" 
+                                            data-name="<?php echo htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                            data-contact="<?php echo htmlspecialchars($supplier['supplier_contact'], ENT_QUOTES, 'UTF-8'); ?>"
+                                            data-created-by="<?php echo $supplier['created_by']; ?>"
+                                            data-created-at="<?php echo $supplier['created_at']; ?>"
+                                            data-updated-by="<?php echo $supplier['updated_by']; ?>"
+                                            data-updated-at="<?php echo $supplier['updated_at']; ?>">
+                                        Info
+                                    </button>
                                 </td>
                             </tr>
                         <?php } ?>
