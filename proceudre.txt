@@ -1,0 +1,134 @@
+DELIMITER $$
+
+-- Add Supplier
+CREATE PROCEDURE AddSupplier(
+    IN in_supplier_name VARCHAR(255),
+    IN in_supplier_info VARCHAR(255),
+    IN in_address VARCHAR(255),
+    IN in_created_by INT
+)
+BEGIN
+    INSERT INTO supplier (supplier_name, supplier_info, address, created_by)
+    VALUES (in_supplier_name, in_supplier_info, in_address, in_created_by);
+END $$
+
+-- Edit Supplier
+CREATE PROCEDURE EditSupplier(
+    IN in_supplier_id INT,
+    IN in_supplier_name VARCHAR(255),
+    IN in_supplier_info VARCHAR(255),
+    IN in_address VARCHAR(255),
+    IN in_updated_by INT
+)
+BEGIN
+    UPDATE supplier
+    SET supplier_name = in_supplier_name,
+        supplier_info = in_supplier_info,
+        address = in_address,
+        updated_by = in_updated_by
+    WHERE supplier_id = in_supplier_id;
+END $$
+
+-- Delete Supplier
+CREATE PROCEDURE DeleteSupplier(IN in_supplier_id INT)
+BEGIN
+    DELETE FROM supplier WHERE supplier_id = in_supplier_id;
+END $$
+
+-- Add Material
+CREATE PROCEDURE AddMaterial(
+    IN in_supplier_id INT,
+    IN in_material_type ENUM('Wood', 'Metal', 'Plastic', 'Other'),
+    IN in_quantity INT,
+    IN in_created_by INT
+)
+BEGIN
+    INSERT INTO material (supplier_id, material_type, quantity, created_by)
+    VALUES (in_supplier_id, in_material_type, in_quantity, in_created_by);
+END $$
+
+-- Edit Material
+CREATE PROCEDURE EditMaterial(
+    IN in_material_id INT,
+    IN in_supplier_id INT,
+    IN in_material_type ENUM('Wood', 'Metal', 'Plastic', 'Other'),
+    IN in_quantity INT
+)
+BEGIN
+    UPDATE material
+    SET supplier_id = in_supplier_id,
+        material_type = in_material_type,
+        quantity = in_quantity
+    WHERE material_id = in_material_id;
+END $$
+
+-- Delete Material
+CREATE PROCEDURE DeleteMaterial(IN in_material_id INT)
+BEGIN
+    DELETE FROM material WHERE material_id = in_material_id;
+END $$
+
+-- Add Order
+CREATE PROCEDURE AddOrder(
+    IN in_customer_id INT,
+    IN in_order_date DATE,
+    IN in_status BOOLEAN
+)
+BEGIN
+    INSERT INTO orders (customer_id, order_date, status)
+    VALUES (in_customer_id, in_order_date, in_status);
+END $$
+
+-- Add Invoice
+CREATE PROCEDURE AddInvoice(
+    IN in_admin_id INT,
+    IN in_invoice_date DATE,
+    IN in_customer_id INT,
+    IN in_order_details_id INT,
+    IN in_delivery_date DATE,
+    IN in_tin VARCHAR(50),
+    IN in_total DECIMAL(10,2)
+)
+BEGIN
+    INSERT INTO invoice (admin_id, invoice_date, customer_id, order_details_id, delivery_date, tin, total)
+    VALUES (in_admin_id, in_invoice_date, in_customer_id, in_order_details_id, in_delivery_date, in_tin, in_total);
+END $$
+
+-- Return Request
+-- Add a Return Request
+CREATE PROCEDURE AddReturn(
+    IN in_order_id INT,
+    IN in_customer_id INT,
+    IN in_product_id INT,
+    IN in_return_date DATE,
+    IN in_reason TEXT,
+    IN in_created_by INT
+)
+BEGIN
+    INSERT INTO returns (order_id, customer_id, product_id, return_date, reason, created_by)
+    VALUES (in_order_id, in_customer_id, in_product_id, in_return_date, in_reason, in_created_by);
+END $$
+
+-- Update Return Status
+CREATE PROCEDURE UpdateReturnStatus(
+    IN in_return_id INT,
+    IN in_status ENUM('Pending', 'Approved', 'Rejected'),
+    IN in_updated_by INT
+)
+BEGIN
+    UPDATE returns
+    SET status = in_status,
+        updated_by = in_updated_by
+    WHERE return_id = in_return_id;
+END $$
+
+-- Delete a Return Record
+CREATE PROCEDURE DeleteReturn(IN in_return_id INT)
+BEGIN
+    DELETE FROM returns WHERE return_id = in_return_id;
+END $$
+
+DELIMITER ;
+
+
+DELIMITER ;
