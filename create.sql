@@ -49,7 +49,7 @@ CREATE TABLE products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description VARCHAR(255),
-    category ENUM('Furniture', 'Tools', 'Accessories', 'Other') NOT NULL,
+    category ENUM('Tools', 'Accessories', 'Other') NOT NULL,
     price DECIMAL(10,2) NOT NULL,
     material_id INT NOT NULL,
     created_by INT,

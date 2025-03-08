@@ -1,11 +1,9 @@
 <?php
 include '../Handler/session.php';
-
 $full_name = $_SESSION['full_name']; // Get the user's full name
 
 // DB Connection
-$conn = new mysqli("localhost", "root", "", "inventory_system");
-if ($conn->connect_error) die("Connection failed: " . $conn->connect_error);
+include '../Handler/db.php';
 
 // Fetch materials with supplier names
 $materials_sql = "SELECT materials.id, materials.material_type, suppliers.supplier_name, materials.quantity, 

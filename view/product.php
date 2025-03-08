@@ -2,15 +2,12 @@
 include '../Handler/session.php';
 $full_name = $_SESSION['full_name']; // Get the user's full name
 
-// Database connection
-$conn = new mysqli("localhost", "root", "", "inventory_system");
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+// DB Connection
+include '../Handler/db.php';
 
 // Fetch products with material and user details
 $product_sql = "SELECT products.id, products.name, products.description, products.category, products.price, 
-                       materials.material_type, creator.username AS created_by, updater.username AS updated_by,
+                       materials.material_type, creator.last_name AS created_by, updater.last_name AS updated_by,
                        products.created_at, products.updated_at
                 FROM products
                 JOIN materials ON products.material_id = materials.id
@@ -49,12 +46,12 @@ if (isset($_POST['edit_product'])) {
     $category = $_POST['category'];
     $price = $_POST['price'];
     $material_id = $_POST['material_id'];
-    $updated_by = $_SESSION['user_id']; // Assuming you have a logged-in user
+    $updated_by = $_SESSION['user_id']; // Ensure this is set
 
     // Update the database
     $update_sql = "UPDATE products SET name = ?, description = ?, category = ?, price = ?, material_id = ?, updated_by = ? WHERE id = ?";
     $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("sssdiisi", $name, $description, $category, $price, $material_id, $updated_by, $product_id);
+    $update_stmt->bind_param("sssdiii", $name, $description, $category, $price, $material_id, $updated_by, $product_id);
     $update_stmt->execute();
 
     // Redirect to refresh the page
@@ -87,6 +84,7 @@ if (isset($_POST['delete_product'])) {
     <!-- Aesthetics -->
     <link rel="stylesheet" href="style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 <body>
@@ -95,7 +93,7 @@ if (isset($_POST['delete_product'])) {
 
 <!-- Main -->
 <div class="content">
-    <h3 class="text-primary">Products - Hello <?php echo htmlspecialchars($full_name); ?></h3>
+    <h3 class="text-primary">Products</h3>
     <div class="mb-3">
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addProductModal">
             <i class="bi bi-plus-circle-fill"></i>&nbsp;Create Product
@@ -113,10 +111,6 @@ if (isset($_POST['delete_product'])) {
                     <th>Category</th>
                     <th>Price</th>
                     <th>Material</th>
-                    <th>Created By</th>
-                    <th>Created At</th>
-                    <th>Updated By</th>
-                    <th>Updated At</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -129,10 +123,6 @@ if (isset($_POST['delete_product'])) {
                         <td><?php echo $row['category']; ?></td>
                         <td><?php echo $row['price']; ?></td>
                         <td><?php echo $row['material_type']; ?></td>
-                        <td><?php echo $row['created_by']; ?></td>
-                        <td><?php echo $row['created_at']; ?></td>
-                        <td><?php echo $row['updated_by']; ?></td>
-                        <td><?php echo $row['updated_at']; ?></td>
                         <td>
                             <button class="btn btn-success btn-sm edit_product-btn" 
                                 data-id="<?php echo $row['id']; ?>" 
@@ -140,7 +130,7 @@ if (isset($_POST['delete_product'])) {
                                 data-description="<?php echo $row['description']; ?>" 
                                 data-category="<?php echo $row['category']; ?>" 
                                 data-price="<?php echo $row['price']; ?>"
-                                data-material-id="<?php echo $row['material_id']; ?>">
+                                data-material-id="<?php echo $row['name']; ?>">
                                     <i class="bi bi-pencil-square"></i>&nbsp;Edit
                             </button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this product?');">
@@ -150,6 +140,15 @@ if (isset($_POST['delete_product'])) {
                                     <i class="bi bi-trash3"></i>&nbsp;Delete
                                 </button>
                             </form>
+                            <button class="btn btn-primary btn-sm info_product-btn" 
+                                data-id="<?php echo $row['id']; ?>" 
+                                data-name="<?php echo $row['name']; ?>" 
+                                data-created-by="<?php echo $row['created_by']; ?>" 
+                                data-created-at="<?php echo $row['created_at']; ?>" 
+                                data-updated-by="<?php echo $row['updated_by']; ?>" 
+                                data-updated-at="<?php echo $row['updated_at']; ?>">
+                                <i class="bi bi-info-circle"></i>&nbsp;Info
+                            </button>
                         </td>
                     </tr>
                 <?php } ?>
@@ -280,27 +279,79 @@ if (isset($_POST['delete_product'])) {
     </div>
 </div>
 
+<!-- Info Product Modal -->
+<div class="modal fade" id="infoProductModal" tabindex="-1" aria-labelledby="infoProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="infoProductModalLabel">Product Info</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>ID:</strong> <span id="infoProductId"></span></p>
+                <p><strong>Product Name:</strong> <span id="infoProductName"></span></p>
+                <p><strong>Created By:</strong> <span id="infoCreatedBy"></span></p>
+                <p><strong>Created At:</strong> <span id="infoCreatedAt"></span></p>
+                <p><strong>Updated By:</strong> <span id="infoUpdatedBy"></span></p>
+                <p><strong>Updated At:</strong> <span id="infoUpdatedAt"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 <script>
-    // JavaScript to handle Edit Button Click
-    $(document).on("click", ".edit_product-btn", function() {
-        let productId = $(this).data("id");
-        let productName = $(this).data("name");
-        let productDescription = $(this).data("description");
-        let productCategory = $(this).data("category");
-        let productPrice = $(this).data("price");
-        let productMaterialId = $(this).data("material-id");
+    $(document).ready(function() {
+        // Initialize DataTable
+        $('#productsTable').DataTable();
 
-        // Populate the Edit Modal
-        $("#editProductId").val(productId);
-        $("#editProductName").val(productName);
-        $("#editProductDescription").val(productDescription);
-        $("#editProductCategory").val(productCategory);
-        $("#editProductPrice").val(productPrice);
-        $("#editProductMaterialId").val(productMaterialId);
+        // Handle Edit Button Click
+        $(document).on("click", ".edit_product-btn", function() {
+            let productId = $(this).data("id");
+            let productName = $(this).data("name");
+            let productDescription = $(this).data("description");
+            let productCategory = $(this).data("category");
+            let productPrice = $(this).data("price");
+            let productMaterialId = $(this).data("material-id");
 
-        // Show the Edit Modal
-        $("#editProductModal").modal("show");
+            // Populate the Edit Modal
+            $("#editProductId").val(productId);
+            $("#editProductName").val(productName);
+            $("#editProductDescription").val(productDescription);
+            $("#editProductCategory").val(productCategory);
+            $("#editProductPrice").val(productPrice);
+            $("#editProductMaterialId").val(productMaterialId);
+
+            // Show the Edit Modal
+            $("#editProductModal").modal("show");
+        });
+
+        // Handle Info Button Click
+        $(document).on("click", ".info_product-btn", function() {
+            let productId = $(this).data("id");
+            let productName = $(this).data("name");
+            let createdBy = $(this).data("created-by");
+            let createdAt = $(this).data("created-at");
+            let updatedBy = $(this).data("updated-by");
+            let updatedAt = $(this).data("updated-at");
+
+            // Populate the Info Modal
+            $("#infoProductId").text(productId);
+            $("#infoProductName").text(productName);
+            $("#infoCreatedBy").text(createdBy);
+            $("#infoCreatedAt").text(createdAt);
+            $("#infoUpdatedBy").text(updatedBy);
+            $("#infoUpdatedAt").text(updatedAt);
+
+            // Show the Info Modal
+            $("#infoProductModal").modal("show");
+        });
     });
 </script>
 </body>
