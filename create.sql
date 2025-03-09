@@ -1,5 +1,7 @@
--- Drop the database if it exists (for testing purposes)
+
 -- DROP DATABASE IF EXISTS inventory_system;
+
+-- ✅6 out of 12 Completed✅
 
 -- Create the database
 CREATE DATABASE IF NOT EXISTS inventory_system;
@@ -41,7 +43,8 @@ CREATE TABLE materials (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT unique_material_supplier UNIQUE (material_type, supplier_id)
 );
 
 -- Products Table  ✅
@@ -124,7 +127,7 @@ CREATE TABLE invoice (
     FOREIGN KEY (order_details_id) REFERENCES order_details(id) ON DELETE CASCADE
 );
 
--- Stock Transactions (Purchases)
+-- Stock Transactions (Purchases) ✅
 CREATE TABLE stock_material (
     id INT AUTO_INCREMENT PRIMARY KEY,
     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

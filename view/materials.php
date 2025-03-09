@@ -65,12 +65,56 @@ if (isset($_POST['delete_supplier'])) {
 
 // Handle Add Material
 if (isset($_POST['add_material'])) {
-    if (!empty($_POST['supplier_id']) && !empty($_POST['material_type']) && !empty($_POST['quantity'])) {
-        $stmt = $conn->prepare("INSERT INTO materials (supplier_id, material_type, quantity, created_by) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("issi", $_POST['supplier_id'], $_POST['material_type'], $_POST['quantity'], $_SESSION['user_id']);
-        $stmt->execute();
-        $stmt->close();
+    $material_type = $_POST['material_type'];
+    $supplier_id = $_POST['supplier_id'];
+    $quantity = $_POST['quantity'];
+
+    // Check if the material already exists for the same supplier
+    $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("si", $material_type, $supplier_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    if ($check_result->num_rows > 0) {
+        // Material exists, update the quantity
+        $row = $check_result->fetch_assoc();
+        $material_id = $row['id'];
+        $new_quantity = $row['quantity'] + $quantity;
+
+        $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("ii", $new_quantity, $material_id);
+        $update_stmt->execute();
+        $update_stmt->close();
+
+        // Log the transaction (update)
+        $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
+        $log_stmt = $conn->prepare($log_sql);
+        $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
+        $log_stmt->execute();
+        $log_stmt->close();
+
+        $_SESSION['success'] = "Material quantity updated successfully.";
+    } else {
+        // Material does not exist, insert a new row
+        $insert_sql = "INSERT INTO materials (material_type, supplier_id, quantity) VALUES (?, ?, ?)";
+        $insert_stmt = $conn->prepare($insert_sql);
+        $insert_stmt->bind_param("sii", $material_type, $supplier_id, $quantity);
+        $insert_stmt->execute();
+        $material_id = $conn->insert_id; // Get the ID of the newly inserted material
+        $insert_stmt->close();
+
+        // Log the transaction (new material)
+        $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
+        $log_stmt = $conn->prepare($log_sql);
+        $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
+        $log_stmt->execute();
+        $log_stmt->close();
+
+        $_SESSION['success'] = "New material added successfully.";
     }
+
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -94,42 +138,6 @@ if (isset($_POST['delete_material'])) {
     exit;
 }
 
-// Handle Increase/Decrease Quantity
-if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
-    $material_id = $_POST['material_id'];
-    $action = $_POST['action'];
-
-    // Fetch current quantity
-    $sql = "SELECT quantity FROM materials WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $material_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $current_quantity = $row['quantity'];
-
-    // Update quantity based on action
-    if ($action === "increase") {
-        $new_quantity = $current_quantity + 1;
-    } elseif ($action === "decrease") {
-        $new_quantity = $current_quantity - 1;
-    }
-
-    // Ensure quantity doesn't go below 0
-    if ($new_quantity < 0) {
-        $new_quantity = 0;
-    }
-
-    // Update the database
-    $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("ii", $new_quantity, $material_id);
-    $update_stmt->execute();
-
-    // Redirect to refresh the page
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit;
-}
 ?>
 
 <!DOCTYPE html>
@@ -153,8 +161,15 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
 <div class="content">
     <h3 class="text-primary">Materials - Hello <?php echo htmlspecialchars($full_name); ?></h3>
     <div class="mb-3">
-        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal"><i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials</button>
-        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#suppliersModal"><i class="bi bi-person-fill-down"></i>&nbsp;Suppliers</button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal">
+            <i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials
+        </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#suppliersModal">
+            <i class="bi bi-person-fill-down"></i>&nbsp;Suppliers
+        </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#transactionLogModal">
+            <i class="bi bi-list-check"></i>&nbsp;Transaction Log
+        </button>
     </div>
 
     <!-- Data Table -->
@@ -177,23 +192,6 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
         <td><?php echo $row['supplier_name']; ?></td>
         <td><?php echo $row['quantity']; ?></td>
         <td>
-            <!-- Plus Button -->
-            <form method="POST" style="display:inline;">
-                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
-                <input type="hidden" name="action" value="increase">
-                <button type="submit" class="btn btn-success btn-sm">
-                    <i class="bi bi-plus"></i>
-                </button>
-            </form>
-
-            <!-- Minus Button -->
-            <form method="POST" style="display:inline;">
-                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
-                <input type="hidden" name="action" value="decrease">
-                <button type="submit" class="btn btn-warning btn-sm">
-                    <i class="bi bi-dash"></i>
-                </button>
-            </form>
              <button class="btn btn-primary btn-sm info-material-btn" 
                     data-id="<?php echo $row['id']; ?>" 
                     data-material="<?php echo htmlspecialchars($row['material_type'], ENT_QUOTES, 'UTF-8'); ?>" 
@@ -371,6 +369,55 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
   </div>
 </div>
 
+<!-- Transaction Log Modal -->
+<div class="modal fade" id="transactionLogModal" tabindex="-1" aria-labelledby="transactionLogModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transactionLogModalLabel">Transaction Log</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Transaction Log Table -->
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Transaction Date</th>
+                            <th>Supplier</th>
+                            <th>Material</th>
+                            <th>Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Fetch transaction log
+                        $log_sql = "SELECT sm.transaction_date, s.supplier_name, m.material_type, sm.quantity
+                                    FROM stock_material sm
+                                    JOIN suppliers s ON sm.supplier_id = s.id
+                                    JOIN materials m ON sm.material_id = m.id
+                                    ORDER BY sm.transaction_date DESC";
+                        $log_result = $conn->query($log_sql);
+                        if ($log_result->num_rows > 0) {
+                            while ($log = $log_result->fetch_assoc()) {
+                                echo '
+                                <tr>
+                                    <td>' . htmlspecialchars($log['transaction_date']) . '</td>
+                                    <td>' . htmlspecialchars($log['supplier_name']) . '</td>
+                                    <td>' . htmlspecialchars($log['material_type']) . '</td>
+                                    <td>' . htmlspecialchars($log['quantity']) . '</td>
+                                </tr>';
+                            }
+                        } else {
+                            echo '<tr><td colspan="4">No transactions found.</td></tr>';
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>  
+
 <!-- Add Material Modal -->
 <div class="modal fade" id="addMaterialModal" tabindex="-1" aria-labelledby="addMaterialModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -385,11 +432,13 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
                     <!-- Supplier Select -->
                     <select name="supplier_id" required class="form-control mb-2">
                         <option value="">Select Supplier</option>
-                        <?php 
+                        <?php
+                        // Fetch suppliers from the database
+                        $supplier_sql = "SELECT id, supplier_name FROM suppliers";
+                        $supplier_result = $conn->query($supplier_sql);
                         if ($supplier_result->num_rows > 0) {
-                            $supplier_result->data_seek(0); 
-                            while ($supplier = $supplier_result->fetch_assoc()) { 
-                                echo '<option value="'.htmlspecialchars($supplier['id']).'">'.htmlspecialchars($supplier['supplier_name']).'</option>';
+                            while ($supplier = $supplier_result->fetch_assoc()) {
+                                echo '<option value="' . htmlspecialchars($supplier['id']) . '">' . htmlspecialchars($supplier['supplier_name']) . '</option>';
                             }
                         } else {
                             echo '<option value="">No suppliers available</option>';
@@ -398,7 +447,7 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
                     </select>
                     
                     <!-- Material Type Text Input -->
-                    <input type="text" name="material_type" placeholder="Material Type" required class="form-control mb-2">
+                    <input type="text" name="material_type" placeholder="Material Type (e.g., Steel)" required class="form-control mb-2">
                     
                     <!-- Quantity Input -->
                     <input type="number" name="quantity" placeholder="Quantity" required class="form-control mb-2">
