@@ -15,25 +15,100 @@ $inventory_sql = "SELECT inventory.id, products.name AS product_name, inventory.
 $inventory_result = $conn->query($inventory_sql);
 
 if (!$inventory_result) {
-    die("Error fetching inventory: " . $conn->error); // Add error handling
+    die("Error fetching inventory: " . $conn->error);
 }
 
 // Fetch products for the dropdown
 $product_sql = "SELECT id, name FROM products";
 $product_result = $conn->query($product_sql);
-
 if (!$product_result) {
-    die("Error fetching products: " . $conn->error); // Add error handling
+    die("Error fetching products: " . $conn->error);
 }
 
 // Handle Add Inventory
 if (isset($_POST['add_inventory'])) {
-    if (!empty($_POST['product_id']) && !empty($_POST['quantity'])) {
-        $stmt = $conn->prepare("INSERT INTO inventory (product_id, quantity, created_by) VALUES (?, ?, ?)");
-        $stmt->bind_param("iii", $_POST['product_id'], $_POST['quantity'], $_SESSION['user_id']);
-        $stmt->execute();
-        $stmt->close();
+    $product_id = $_POST['product_id'];
+    $quantity = $_POST['quantity'];
+    $material_ids = $_POST['material_id'];
+    $material_consumed = $_POST['material_consumed'];
+
+    // Validate inputs
+    if (empty($product_id) || empty($quantity) || empty($material_ids) || empty($material_consumed)) {
+        $_SESSION['error'] = "Please fill all fields.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
     }
+
+    // Check if enough materials are available
+    $enough_materials = true;
+    foreach ($material_ids as $index => $material_id) {
+        $consumed_quantity = $material_consumed[$index];
+
+        // Check available quantity
+        $check_sql = "SELECT quantity FROM materials WHERE id = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("i", $material_id);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+        $material = $check_result->fetch_assoc();
+
+        if ($material['quantity'] < $consumed_quantity) {
+            $enough_materials = false;
+            $_SESSION['error'] = "Not enough " . $material['material_type'] . " available.";
+            break;
+        }
+    }
+
+    if ($enough_materials) {
+        // Check if the product already exists in the inventory
+        $check_inventory_sql = "SELECT id, quantity FROM inventory WHERE product_id = ?";
+        $check_inventory_stmt = $conn->prepare($check_inventory_sql);
+        $check_inventory_stmt->bind_param("i", $product_id);
+        $check_inventory_stmt->execute();
+        $check_inventory_result = $check_inventory_stmt->get_result();
+
+        if ($check_inventory_result->num_rows > 0) {
+            // Product exists, update the quantity
+            $row = $check_inventory_result->fetch_assoc();
+            $inventory_id = $row['id'];
+            $new_quantity = $row['quantity'] + $quantity;
+
+            $update_sql = "UPDATE inventory SET quantity = ? WHERE id = ?";
+            $update_stmt = $conn->prepare($update_sql);
+            $update_stmt->bind_param("ii", $new_quantity, $inventory_id);
+            $update_stmt->execute();
+            $update_stmt->close();
+        } else {
+            // Product does not exist, insert a new row
+            $insert_sql = "INSERT INTO inventory (product_id, quantity) VALUES (?, ?)";
+            $insert_stmt = $conn->prepare($insert_sql);
+            $insert_stmt->bind_param("ii", $product_id, $quantity);
+            $insert_stmt->execute();
+            $insert_stmt->close();
+        }
+
+        // Log materials consumed in stock_product
+        foreach ($material_ids as $index => $material_id) {
+            $consumed_quantity = $material_consumed[$index];
+
+            // Deduct consumed materials
+            $update_sql = "UPDATE materials SET quantity = quantity - ? WHERE id = ?";
+            $update_stmt = $conn->prepare($update_sql);
+            $update_stmt->bind_param("ii", $consumed_quantity, $material_id);
+            $update_stmt->execute();
+            $update_stmt->close();
+
+            // Log the transaction in stock_product
+            $log_sql = "INSERT INTO stock_product (material_id, material_consumed, product_produced) VALUES (?, ?, ?)";
+            $log_stmt = $conn->prepare($log_sql);
+            $log_stmt->bind_param("iii", $material_id, $consumed_quantity, $product_id);
+            $log_stmt->execute();
+            $log_stmt->close();
+        }
+
+        $_SESSION['success'] = "Inventory added successfully.";
+    }
+
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -53,43 +128,6 @@ if (isset($_POST['delete_inventory'])) {
     $stmt->bind_param("i", $_POST['inventory_id']);
     $stmt->execute();
     $stmt->close();
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit;
-}
-
-// Handle Increase/Decrease Quantity
-if (isset($_POST['action'])) {
-    $inventory_id = $_POST['inventory_id'];
-    $action = $_POST['action'];
-
-    // Fetch current quantity
-    $sql = "SELECT quantity FROM inventory WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $inventory_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $current_quantity = $row['quantity'];
-
-    // Update quantity based on action
-    if ($action === "increase") {
-        $new_quantity = $current_quantity + 1;
-    } elseif ($action === "decrease") {
-        $new_quantity = $current_quantity - 1;
-    }
-
-    // Ensure quantity doesn't go below 0
-    if ($new_quantity < 0) {
-        $new_quantity = 0;
-    }
-
-    // Update the database
-    $update_sql = "UPDATE inventory SET quantity = ? WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("ii", $new_quantity, $inventory_id);
-    $update_stmt->execute();
-
-    // Redirect to refresh the page
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -118,6 +156,9 @@ if (isset($_POST['action'])) {
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addInventoryModal">
             <i class="bi bi-plus-circle-fill"></i>&nbsp;Add Inventory
         </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#productionLogModal">
+            <i class="bi bi-list-check"></i>&nbsp;Production Log
+        </button>
     </div>
 
     <!-- Data Table -->
@@ -138,23 +179,6 @@ if (isset($_POST['action'])) {
                         <td><?php echo $row['product_name']; ?></td>
                         <td><?php echo $row['quantity']; ?></td>
                         <td>
-                            <!-- Add Button -->
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="inventory_id" value="<?php echo $row['id']; ?>">
-                                <input type="hidden" name="action" value="increase">
-                                <button type="submit" class="btn btn-success btn-sm">
-                                    <i class="bi bi-plus"></i>&nbsp;Add
-                                </button>
-                            </form>
-
-                            <!-- Remove Button -->
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="inventory_id" value="<?php echo $row['id']; ?>">
-                                <input type="hidden" name="action" value="decrease">
-                                <button type="submit" class="btn btn-warning btn-sm">
-                                    <i class="bi bi-dash"></i>&nbsp;Remove
-                                </button>
-                            </form>
                             <button class="btn btn-primary btn-sm info-inventory-btn"
                                 data-id="<?php echo $row['id']; ?>"
                                 data-product-name="<?php echo htmlspecialchars($row['product_name']); ?>"
@@ -202,11 +226,12 @@ if (isset($_POST['action'])) {
                 <!-- Add Inventory Form -->
                 <form method="POST">
                     <!-- Product Select -->
-                    <select name="product_id" id="productSelect" required class="form-control mb-2">
+                    <select name="product_id" required class="form-control mb-2">
                         <option value="">Select Product</option>
                         <?php
+                        $product_sql = "SELECT id, name FROM products";
+                        $product_result = $conn->query($product_sql);
                         if ($product_result->num_rows > 0) {
-                            $product_result->data_seek(0);
                             while ($product = $product_result->fetch_assoc()) {
                                 echo '<option value="' . htmlspecialchars($product['id']) . '">' . htmlspecialchars($product['name']) . '</option>';
                             }
@@ -217,12 +242,17 @@ if (isset($_POST['action'])) {
                     </select>
 
                     <!-- Quantity Input -->
-                    <input type="number" name="quantity" placeholder="Quantity" required class="form-control mb-2">
+                    <input type="number" name="quantity" placeholder="Quantity Produced" required class="form-control mb-2">
 
                     <!-- Materials Consumed Section -->
-                    <div id="materialsSection" class="mb-3">
+                    <div class="mb-3">
                         <h6>Materials Consumed</h6>
-                        <div id="materialsList"></div>
+                        <div id="materialsConsumedSection">
+                            <!-- Dynamic fields for materials consumed will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="addMaterialConsumed">
+                            <i class="bi bi-plus"></i>&nbsp;Add Material
+                        </button>
                     </div>
 
                     <!-- Submit Button -->
@@ -290,6 +320,58 @@ if (isset($_POST['action'])) {
     </div>
 </div>
 
+<!-- Transaction Log Modal -->
+<div class="modal fade" id="productionLogModal" tabindex="-1" aria-labelledby="productionLogModal" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transactionLogModalLabel">Production Log</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Transaction Log Table -->
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Transaction Date</th>
+                            <th>Material</th>
+                            <th>Product</th>
+                            <th>Consumed</th>
+                            <th>Produced</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Fetch production log from stock_product table
+                        $log_sql = "SELECT sp.transaction_date, m.material_type, p.name AS product_name, sp.material_consumed, sp.product_produced
+                                    FROM stock_product sp
+                                    JOIN materials m ON sp.material_id = m.id
+                                    JOIN products p ON sp.product_produced = p.id
+                                    ORDER BY sp.transaction_date DESC";
+
+                        $log_result = $conn->query($log_sql);
+                        if ($log_result->num_rows > 0) {
+                            while ($log = $log_result->fetch_assoc()) {
+                                echo '
+                                <tr>
+                                    <td>' . htmlspecialchars($log['transaction_date']) . '</td>
+                                    <td>' . htmlspecialchars($log['material_type']) . '</td>
+                                    <td>' . htmlspecialchars($log['product_name']) . '</td>
+                                    <td>' . htmlspecialchars($log['material_consumed']) . '</td>
+                                    <td>' . htmlspecialchars($log['product_produced']) . '</td>
+                                </tr>';
+                            }
+                        } else {
+                            echo '<tr><td colspan="5">No production transactions found.</td></tr>';
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -313,6 +395,41 @@ if (isset($_POST['action'])) {
         // Show the Edit Modal
         $("#editInventoryModal").modal("show");
         });
+    });
+
+    // Add Material Consumed Field
+    $('#addMaterialConsumed').click(function() {
+        $('#materialsConsumedSection').append(`
+            <div class="row mb-2">
+                <div class="col">
+                    <select name="material_id[]" class="form-control" required>
+                        <option value="">Select Material</option>
+                        <?php
+                        $material_sql = "SELECT id, material_type FROM materials";
+                        $material_result = $conn->query($material_sql);
+                        if ($material_result->num_rows > 0) {
+                            while ($material = $material_result->fetch_assoc()) {
+                                echo '<option value="' . htmlspecialchars($material['id']) . '">' . htmlspecialchars($material['material_type']) . '</option>';
+                            }
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div class="col">
+                    <input type="number" name="material_consumed[]" placeholder="Quantity Consumed" class="form-control" required>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-danger btn-sm removeMaterialConsumed">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `);
+    });
+
+    // Remove Material Consumed Field
+    $(document).on('click', '.removeMaterialConsumed', function() {
+        $(this).closest('.row').remove();
     });
 
      // Handle Info Button Click

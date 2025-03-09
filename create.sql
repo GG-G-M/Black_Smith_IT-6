@@ -1,7 +1,7 @@
 
 -- DROP DATABASE IF EXISTS inventory_system;
 
--- ✅6 out of 12 Completed✅
+-- ✅7 out of 12 Completed✅
 
 -- Create the database
 CREATE DATABASE IF NOT EXISTS inventory_system;
@@ -138,14 +138,15 @@ CREATE TABLE stock_material (
     FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE
 );
 
--- Stock Usage (Conversion to Products)
-CREATE TABLE stock_stock (
+-- Stock Usage (Conversion to Products) ✅
+CREATE TABLE stock_product (
     id INT AUTO_INCREMENT PRIMARY KEY,
     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     material_id INT NOT NULL,
     material_consumed INT NOT NULL,
-    stock_produced INT NOT NULL,
-    FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE
+    product_produced INT NOT NULL,
+    FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_produced) REFERENCES products(id) ON DELETE CASCADE
 );
 
 -- Return Table

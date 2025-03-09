@@ -591,30 +591,6 @@ $(document).ready(function() {
         // Show the Edit Modal
         $("#editMaterialModal").modal("show");
     });
-
-    // Handle Plus and Minus Button Clicks
-    $(document).on("click", ".update-quantity", function() {
-        let materialId = $(this).data("id");
-        let action = $(this).data("action");
-
-        // Send AJAX request
-        $.ajax({
-            url: "update_quantity.php",
-            type: "POST",
-            data: {
-                material_id: materialId,
-                action: action
-            },
-            success: function(response) {
-                // Update the quantity in the table
-                let quantityCell = $("#material-" + materialId).find(".quantity");
-                quantityCell.text(response);
-            },
-            error: function(xhr, status, error) {
-                alert("Error: " + error);
-            }
-        });
-    });
 });
 </script>
 
