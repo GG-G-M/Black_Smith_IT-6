@@ -98,7 +98,11 @@ if (isset($_POST['delete_product'])) {
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addProductModal">
             <i class="bi bi-plus-circle-fill"></i>&nbsp;Create Product
         </button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#categoryInfoModal">
+        <i class="bi bi-info-circle"></i>&nbsp;Category's Info
+    </button>
     </div>
+    
 
     <!-- Data Table -->
     <div class="table-container">
@@ -124,6 +128,15 @@ if (isset($_POST['delete_product'])) {
                         <td><?php echo $row['price']; ?></td>
                         <td><?php echo $row['material_type']; ?></td>
                         <td>
+                            <button class="btn btn-primary btn-sm info_product-btn" 
+                                data-id="<?php echo $row['id']; ?>" 
+                                data-name="<?php echo $row['name']; ?>" 
+                                data-created-by="<?php echo $row['created_by']; ?>" 
+                                data-created-at="<?php echo $row['created_at']; ?>" 
+                                data-updated-by="<?php echo $row['updated_by']; ?>" 
+                                data-updated-at="<?php echo $row['updated_at']; ?>">
+                                <i class="bi bi-info-circle"></i>&nbsp;Info
+                            </button>
                             <button class="btn btn-success btn-sm edit_product-btn" 
                                 data-id="<?php echo $row['id']; ?>" 
                                 data-name="<?php echo $row['name']; ?>" 
@@ -140,20 +153,79 @@ if (isset($_POST['delete_product'])) {
                                     <i class="bi bi-trash3"></i>&nbsp;Delete
                                 </button>
                             </form>
-                            <button class="btn btn-primary btn-sm info_product-btn" 
-                                data-id="<?php echo $row['id']; ?>" 
-                                data-name="<?php echo $row['name']; ?>" 
-                                data-created-by="<?php echo $row['created_by']; ?>" 
-                                data-created-at="<?php echo $row['created_at']; ?>" 
-                                data-updated-by="<?php echo $row['updated_by']; ?>" 
-                                data-updated-at="<?php echo $row['updated_at']; ?>">
-                                <i class="bi bi-info-circle"></i>&nbsp;Info
-                            </button>
                         </td>
                     </tr>
                 <?php } ?>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Category's Info Modal -->
+<div class="modal fade" id="categoryInfoModal" tabindex="-1" aria-labelledby="categoryInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="categoryInfoModalLabel">Category's Info</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tools -->
+                <h5>Tools</h5>
+                <ul>
+                    <li>Hammers (Martilyo)</li>
+                    <li>Chisels (Paet)</li>
+                    <li>Tongs (Sipit)</li>
+                    <li>Files (Kikil)</li>
+                </ul>
+
+                <!-- Farming Tools -->
+                <h5>Farming Tools</h5>
+                <ul>
+                    <li>Bolos (Itak)</li>
+                    <li>Sickles (Karit)</li>
+                    <li>Hoes (Asarol)</li>
+                    <li>Plowshares (Sudsod)</li>
+                </ul>
+
+                <!-- Household Items -->
+                <h5>Household Items</h5>
+                <ul>
+                    <li>Cooking Pots (Kaldero)</li>
+                    <li>Frying Pans (Kawali)</li>
+                    <li>Fireplace Tools (Pang-uling)</li>
+                    <li>Candle Holders (Patungan ng Kandila)</li>
+                </ul>
+
+                <!-- Knives & Blades -->
+                <h5>Knives & Blades</h5>
+                <ul>
+                    <li>Kitchen Knives (Kutsilyo)</li>
+                    <li>Utility Knives (Lanseta)</li>
+                    <li>Bolos (Itak)</li>
+                    <li>Machetes (Gulok)</li>
+                </ul>
+
+                <!-- Hardware & Repairs -->
+                <h5>Hardware & Repairs</h5>
+                <ul>
+                    <li>Nails (Pako)</li>
+                    <li>Hinges (Bisagra)</li>
+                    <li>Chains (Kadena)</li>
+                    <li>Locks (Kandado)</li>
+                </ul>
+
+                <!-- Other -->
+                <h5>Other</h5>
+                <ul>
+                    <li>Custom-Made Items</li>
+                    <li>Unique Requests</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -184,9 +256,11 @@ if (isset($_POST['delete_product'])) {
                     <div class="mb-3">
                         <label class="form-label">Category</label>
                         <select name="category" class="form-control" required>
-                            <option value="Furniture">Furniture</option>
                             <option value="Tools">Tools</option>
-                            <option value="Accessories">Accessories</option>
+                            <option value="Farming Tools">Farming Tools</option>
+                            <option value="Household Items">Household Items</option>
+                            <option value="Knives & Blades">Knives & Blades</option>
+                            <option value="Hardware & Repairs">Hardware & Repairs</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -261,6 +335,8 @@ if (isset($_POST['delete_product'])) {
                     <!-- Material Select -->
                     <div class="mb-3">
                         <label class="form-label">Material</label>
+                        <input type="text" name="description" id="material-id" class="form-control">
+                        <label class="form-label">Material</label>
                         <select name="material_id" id="editProductMaterialId" class="form-control" required>
                             <option value="">Select Material</option>
                             <?php
@@ -318,7 +394,7 @@ if (isset($_POST['delete_product'])) {
             let productDescription = $(this).data("description");
             let productCategory = $(this).data("category");
             let productPrice = $(this).data("price");
-            let productMaterialId = $(this).data("material-id");
+            let productMaterialId = $(this).data("material_id");
 
             // Populate the Edit Modal
             $("#editProductId").val(productId);

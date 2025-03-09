@@ -5,7 +5,7 @@
 CREATE DATABASE IF NOT EXISTS inventory_system;
 USE inventory_system;
 
--- Users Table
+-- Users Table ✅
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
@@ -15,7 +15,7 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Supplier Table
+-- Suppliers Table ✅
 CREATE TABLE suppliers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     supplier_name VARCHAR(255) NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE suppliers (
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Material Table
+-- Materials Table ✅
 CREATE TABLE materials (
     id INT AUTO_INCREMENT PRIMARY KEY,
     supplier_id INT NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE materials (
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Product Table (renamed to 'products' for consistency)
+-- Products Table  ✅
 CREATE TABLE products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -75,10 +75,10 @@ CREATE TABLE customer (
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Inventory Table
+-- Inventory Table ✅
 CREATE TABLE inventory (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT NOT NULL,  -- Changed from stock_id to product_id
+    product_id INT NOT NULL,
     quantity INT NOT NULL,
     created_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

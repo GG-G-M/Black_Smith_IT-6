@@ -154,7 +154,7 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
     <h3 class="text-primary">Materials - Hello <?php echo htmlspecialchars($full_name); ?></h3>
     <div class="mb-3">
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal"><i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials</button>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#suppliersModal"><i class="bi bi-person-fill-down"></i>&nbsp;Suppliers</button>
+        <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#suppliersModal"><i class="bi bi-person-fill-down"></i>&nbsp;Suppliers</button>
     </div>
 
     <!-- Data Table -->
@@ -382,6 +382,7 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
             <div class="modal-body">
                 <!-- Add Material Form -->
                 <form method="POST">
+                    <!-- Supplier Select -->
                     <select name="supplier_id" required class="form-control mb-2">
                         <option value="">Select Supplier</option>
                         <?php 
@@ -396,16 +397,13 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
                         ?>
                     </select>
                     
-                    <select name="material_type" required class="form-control mb-2">
-                        <option value="">Select Material Type</option>
-                        <option value="Wood">Wood</option>
-                        <option value="Metal">Metal</option>
-                        <option value="Plastic">Plastic</option>
-                        <option value="Other">Other</option>
-                    </select>
+                    <!-- Material Type Text Input -->
+                    <input type="text" name="material_type" placeholder="Material Type" required class="form-control mb-2">
                     
+                    <!-- Quantity Input -->
                     <input type="number" name="quantity" placeholder="Quantity" required class="form-control mb-2">
                     
+                    <!-- Submit Button -->
                     <button type="submit" name="add_material" class="btn btn-success">+ Add</button>
                 </form>
             </div>
@@ -426,14 +424,8 @@ if (isset($_POST['action'])) { // Fixed: Added missing closing parenthesis `)`
                     <!-- Hidden field for Material ID -->
                     <input type="hidden" name="id" id="editMaterialId">
                     
-                    <!-- Material Type Select -->
-                    <select name="material_type" id="editMaterialType" required class="form-control mb-2">
-                        <option value="">Select Material Type</option>
-                        <option value="Wood">Wood</option>
-                        <option value="Metal">Metal</option>
-                        <option value="Plastic">Plastic</option>
-                        <option value="Other">Other</option>
-                    </select>
+                    <!-- Material Type Text Input -->
+                    <input type="text" name="material_type" id="editMaterialType" placeholder="Material Type" required class="form-control mb-2">
                     
                     <!-- Supplier Select -->
                     <select name="supplier_id" id="editSupplierId" required class="form-control mb-2">
