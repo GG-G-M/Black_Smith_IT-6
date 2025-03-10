@@ -7,7 +7,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
 
-    $stmt = $conn->prepare("SELECT id, password, first_name, last_name FROM users WHERE username = ?");
+    $stmt = $conn->prepare("SELECT id, password, first_name, last_name FROM users WHERE username = ? AND is_active = 1");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $stmt->store_result();

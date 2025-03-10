@@ -1,9 +1,9 @@
 <?php
+// Include the session and database connection files
 include '../Handler/session.php';
-$full_name = $_SESSION['full_name']; // Get the user's full name
+include '../Handler/db.php'; // Adjust the path to your database connection file
 
-// DB Connection
-include '../Handler/db.php';
+$full_name = $_SESSION['full_name']; // Get the user's full name
 
 // Fetch materials with supplier names
 $materials_sql = "SELECT materials.id, materials.material_type, suppliers.supplier_name, materials.quantity, 

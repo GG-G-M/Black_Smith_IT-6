@@ -1,6 +1,7 @@
 <?php
-session_start();
-require '../Handler/db.php';
+// Include the session and database connection files
+include '../Handler/session.php';
+include '../Handler/db.php'; // Adjust the path to your database connection file
 
 $full_name = $_SESSION['full_name']; // Get the user's full name
 
