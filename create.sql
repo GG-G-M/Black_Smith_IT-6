@@ -15,8 +15,10 @@ CREATE TABLE users (
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    is_active tinyint(1) NOT NULL DEFAULT 1;
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    last_login TIMESTAMP
 );
+
 
 -- Suppliers Table ✅
 CREATE TABLE suppliers (

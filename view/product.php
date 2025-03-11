@@ -335,8 +335,6 @@ if (isset($_POST['delete_product'])) {
                     <!-- Material Select -->
                     <div class="mb-3">
                         <label class="form-label">Material</label>
-                        <input type="text" name="description" id="material-id" class="form-control">
-                        <label class="form-label">Material</label>
                         <select name="material_id" id="editProductMaterialId" class="form-control" required>
                             <option value="">Select Material</option>
                             <?php

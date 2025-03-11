@@ -65,56 +65,65 @@ if (isset($_POST['delete_supplier'])) {
 
 // Handle Add Material
 if (isset($_POST['add_material'])) {
-    $material_type = $_POST['material_type'];
     $supplier_id = $_POST['supplier_id'];
-    $quantity = $_POST['quantity'];
+    $material_types = $_POST['material_type'];
+    $quantities = $_POST['quantity'];
 
-    // Check if the material already exists for the same supplier
-    $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
-    $check_stmt = $conn->prepare($check_sql);
-    $check_stmt->bind_param("si", $material_type, $supplier_id);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
-
-    if ($check_result->num_rows > 0) {
-        // Material exists, update the quantity
-        $row = $check_result->fetch_assoc();
-        $material_id = $row['id'];
-        $new_quantity = $row['quantity'] + $quantity;
-
-        $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
-        $update_stmt = $conn->prepare($update_sql);
-        $update_stmt->bind_param("ii", $new_quantity, $material_id);
-        $update_stmt->execute();
-        $update_stmt->close();
-
-        // Log the transaction (update)
-        $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
-        $log_stmt = $conn->prepare($log_sql);
-        $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
-        $log_stmt->execute();
-        $log_stmt->close();
-
-        $_SESSION['success'] = "Material quantity updated successfully.";
-    } else {
-        // Material does not exist, insert a new row
-        $insert_sql = "INSERT INTO materials (material_type, supplier_id, quantity) VALUES (?, ?, ?)";
-        $insert_stmt = $conn->prepare($insert_sql);
-        $insert_stmt->bind_param("sii", $material_type, $supplier_id, $quantity);
-        $insert_stmt->execute();
-        $material_id = $conn->insert_id; // Get the ID of the newly inserted material
-        $insert_stmt->close();
-
-        // Log the transaction (new material)
-        $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
-        $log_stmt = $conn->prepare($log_sql);
-        $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
-        $log_stmt->execute();
-        $log_stmt->close();
-
-        $_SESSION['success'] = "New material added successfully.";
+    // Validate inputs
+    if (empty($supplier_id) || empty($material_types) || empty($quantities)) {
+        $_SESSION['error'] = "Please fill all fields.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
     }
 
+    // Loop through each material and quantity
+    foreach ($material_types as $index => $material_type) {
+        $quantity = $quantities[$index];
+
+        // Check if the material already exists for the same supplier
+        $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("si", $material_type, $supplier_id);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+
+        if ($check_result->num_rows > 0) {
+            // Material exists, update the quantity
+            $row = $check_result->fetch_assoc();
+            $material_id = $row['id'];
+            $new_quantity = $row['quantity'] + $quantity;
+
+            $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
+            $update_stmt = $conn->prepare($update_sql);
+            $update_stmt->bind_param("ii", $new_quantity, $material_id);
+            $update_stmt->execute();
+            $update_stmt->close();
+
+            // Log the transaction (update)
+            $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
+            $log_stmt = $conn->prepare($log_sql);
+            $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
+            $log_stmt->execute();
+            $log_stmt->close();
+        } else {
+            // Material does not exist, insert a new row
+            $insert_sql = "INSERT INTO materials (material_type, supplier_id, quantity) VALUES (?, ?, ?)";
+            $insert_stmt = $conn->prepare($insert_sql);
+            $insert_stmt->bind_param("sii", $material_type, $supplier_id, $quantity);
+            $insert_stmt->execute();
+            $material_id = $conn->insert_id; // Get the ID of the newly inserted material
+            $insert_stmt->close();
+
+            // Log the transaction (new material)
+            $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
+            $log_stmt = $conn->prepare($log_sql);
+            $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
+            $log_stmt->execute();
+            $log_stmt->close();
+        }
+    }
+
+    $_SESSION['success'] = "Materials added successfully.";
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -445,13 +454,29 @@ if (isset($_POST['delete_material'])) {
                         }
                         ?>
                     </select>
-                    
-                    <!-- Material Type Text Input -->
-                    <input type="text" name="material_type" placeholder="Material Type (e.g., Steel)" required class="form-control mb-2">
-                    
-                    <!-- Quantity Input -->
-                    <input type="number" name="quantity" placeholder="Quantity" required class="form-control mb-2">
-                    
+
+                    <!-- Dynamic Material Fields -->
+                    <div id="materialFields">
+                        <div class="row mb-2">
+                            <div class="col">
+                                <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
+                            </div>
+                            <div class="col">
+                                <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-danger btn-sm removeMaterialField" disabled>
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add More Material Button -->
+                    <button type="button" id="addMaterialField" class="btn btn-secondary btn-sm mb-3">
+                        <i class="bi bi-plus"></i>&nbsp;Add Material
+                    </button>
+
                     <!-- Submit Button -->
                     <button type="submit" name="add_material" class="btn btn-success">+ Add</button>
                 </form>
@@ -474,7 +499,7 @@ if (isset($_POST['delete_material'])) {
                     <input type="hidden" name="id" id="editMaterialId">
                     
                     <!-- Material Type Text Input -->
-                    <input type="text" name="material_type" id="editMaterialType" placeholder="Material Type" required class="form-control mb-2">
+                    <input type="text" name="material_type" id="editMaterialType" placeholder="Material Type" required class="form-control mb-2" disabled>
                     
                     <!-- Supplier Select -->
                     <select name="supplier_id" id="editSupplierId" required class="form-control mb-2">
