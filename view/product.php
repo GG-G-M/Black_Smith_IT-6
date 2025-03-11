@@ -1,19 +1,34 @@
 <?php
 // Include the session and database connection files
 include '../Handler/session.php';
-include '../Handler/db.php'; // Adjust the path to your database connection file
+include '../Handler/db.php'; 
 
-$full_name = $_SESSION['full_name']; // Get the user's full name
+$full_name = $_SESSION['full_name']; 
 
-// Fetch products with material and user details
-$product_sql = "SELECT products.id, products.name, products.description, products.category, products.price, 
-                       materials.material_type, creator.last_name AS created_by, updater.last_name AS updated_by,
-                       products.created_at, products.updated_at
-                FROM products
-                JOIN materials ON products.material_id = materials.id
-                LEFT JOIN users AS creator ON products.created_by = creator.id
-                LEFT JOIN users AS updater ON products.updated_by = updater.id";
-$product_result = $conn->query($product_sql);
+// Fetch active products with their materials
+$active_product_sql = "SELECT p.id, p.name, p.description, p.category, p.price, 
+                              GROUP_CONCAT(m.material_type SEPARATOR ', ') AS materials,
+                              creator.last_name AS created_by, updater.last_name AS updated_by,
+                              p.created_at, p.updated_at
+                       FROM products p
+                       LEFT JOIN product_materials pm ON p.id = pm.product_id
+                       LEFT JOIN materials m ON pm.material_id = m.id
+                       LEFT JOIN users AS creator ON p.created_by = creator.id
+                       LEFT JOIN users AS updater ON p.updated_by = updater.id
+                       WHERE p.is_active = 1
+                       GROUP BY p.id";
+$active_product_result = $conn->query($active_product_sql);
+
+// Fetch inactive products
+$inactive_product_sql = "SELECT products.id, products.name, products.description, products.category, products.price, 
+                                materials.material_type, creator.last_name AS created_by, updater.last_name AS updated_by,
+                                products.created_at, products.updated_at
+                         FROM products
+                         JOIN materials ON products.material_id = materials.id
+                         LEFT JOIN users AS creator ON products.created_by = creator.id
+                         LEFT JOIN users AS updater ON products.updated_by = updater.id
+                         WHERE products.is_active = 0";
+$inactive_product_result = $conn->query($inactive_product_sql);
 
 // Fetch materials for the dropdown
 $material_sql = "SELECT id, material_type FROM materials";
@@ -25,15 +40,43 @@ if (isset($_POST['add_product'])) {
     $description = $_POST['description'];
     $category = $_POST['category'];
     $price = $_POST['price'];
-    $material_id = $_POST['material_id'];
-    $created_by = $_SESSION['user_id']; // Assuming you have a logged-in user
+    $material_ids = $_POST['material_id']; 
+    $created_by = $_SESSION['user_id']; 
 
-    // Insert into database
-    $stmt = $conn->prepare("INSERT INTO products (name, description, category, price, material_id, created_by) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssdii", $name, $description, $category, $price, $material_id, $created_by);
-    $stmt->execute();
+    // Validate inputs
+    if (empty($name) || empty($category) || empty($price) || empty($material_ids)) {
+        $_SESSION['error'] = "Please fill all fields.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    }
 
-    // Redirect to refresh the page
+    // Start a transaction
+    $conn->begin_transaction();
+
+    try {
+        // Insert the product
+        $stmt = $conn->prepare("INSERT INTO products (name, description, category, price, created_by) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssdi", $name, $description, $category, $price, $created_by);
+        $stmt->execute();
+        $product_id = $conn->insert_id;
+
+        // Insert materials into product_materials table
+        foreach ($material_ids as $material_id) {
+            $stmt = $conn->prepare("INSERT INTO product_materials (product_id, material_id) VALUES (?, ?)");
+            $stmt->bind_param("ii", $product_id, $material_id);
+            $stmt->execute();
+        }
+
+        // Commit the transaction
+        $conn->commit();
+
+        $_SESSION['success'] = "Product added successfully.";
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+    }
+
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -46,7 +89,7 @@ if (isset($_POST['edit_product'])) {
     $category = $_POST['category'];
     $price = $_POST['price'];
     $material_id = $_POST['material_id'];
-    $updated_by = $_SESSION['user_id']; // Ensure this is set
+    $updated_by = $_SESSION['user_id'];
 
     // Update the database
     $update_sql = "UPDATE products SET name = ?, description = ?, category = ?, price = ?, material_id = ?, updated_by = ? WHERE id = ?";
@@ -63,8 +106,36 @@ if (isset($_POST['edit_product'])) {
 if (isset($_POST['delete_product'])) {
     $product_id = $_POST['product_id'];
 
-    // Delete from database
+    // Soft delete (set is_active to 0)
+    $stmt = $conn->prepare("UPDATE products SET is_active = 0 WHERE id = ?");
+    $stmt->bind_param("i", $product_id);
+    $stmt->execute();
+
+    // Redirect to refresh the page
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Handle Actual Delete Product
+if (isset($_POST['actual_delete_product'])) {
+    $product_id = $_POST['product_id'];
+
+    // Permanently delete the product
     $stmt = $conn->prepare("DELETE FROM products WHERE id = ?");
+    $stmt->bind_param("i", $product_id);
+    $stmt->execute();
+
+    // Redirect to refresh the page
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Handle Activate Product
+if (isset($_POST['activate_product'])) {
+    $product_id = $_POST['product_id'];
+
+    // Set is_active to 1
+    $stmt = $conn->prepare("UPDATE products SET is_active = 1 WHERE id = ?");
     $stmt->bind_param("i", $product_id);
     $stmt->execute();
 
@@ -105,8 +176,73 @@ if (isset($_POST['delete_product'])) {
     
 
     <!-- Data Table -->
+    <!-- Active Products Table -->
+    <h4 class="text-success">Active Products</h4>
     <div class="table-container">
-        <table id="productsTable" class="table table-hover">
+        <table id="activeProductsTable" class="table table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Product Name</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Materials</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while ($row = $active_product_result->fetch_assoc()) { ?>
+                    <tr>
+                        <td>#<?php echo $row['id']; ?></td>
+                        <td><?php echo $row['name']; ?></td>
+                        <td><?php echo $row['description']; ?></td>
+                        <td><?php echo $row['category']; ?></td>
+                        <td><?php echo $row['price']; ?></td>
+                        <td><?php echo $row['materials']; ?></td>
+                        <td>
+                            <!-- Info Button -->
+                            <button class="btn btn-primary btn-sm info_product-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-name="<?php echo $row['name']; ?>" 
+                                    data-description="<?php echo $row['description']; ?>" 
+                                    data-category="<?php echo $row['category']; ?>" 
+                                    data-price="<?php echo $row['price']; ?>"
+                                    data-materials="<?php echo $row['materials']; ?>"
+                                    data-created-by="<?php echo $row['created_by']; ?>"
+                                    data-created-at="<?php echo $row['created_at']; ?>"
+                                    data-updated-by="<?php echo $row['updated_by']; ?>"
+                                    data-updated-at="<?php echo $row['updated_at']; ?>">
+                                <i class="bi bi-info-circle"></i>&nbsp;Info
+                            </button>
+                            <!-- Edit Button -->
+                            <button class="btn btn-success btn-sm edit_product-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-name="<?php echo $row['name']; ?>" 
+                                    data-description="<?php echo $row['description']; ?>" 
+                                    data-category="<?php echo $row['category']; ?>" 
+                                    data-price="<?php echo $row['price']; ?>">
+                                <i class="bi bi-pencil-square"></i>&nbsp;Edit
+                            </button>
+                            <!-- Delete Button -->
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to deactivate this product?');">
+                                <input type="hidden" name="delete_product" value="1">
+                                <input type="hidden" name="product_id" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-trash3"></i>&nbsp;Deactivate
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Inactive Products Table -->
+    <h4 class="text-danger">Inactive Products</h4>
+    <div class="table-container">
+        <table id="inactiveProductsTable" class="table table-hover">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -118,8 +254,8 @@ if (isset($_POST['delete_product'])) {
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody id="productsList">
-                <?php while ($row = $product_result->fetch_assoc()) { ?>
+            <tbody>
+                <?php while ($row = $inactive_product_result->fetch_assoc()) { ?>
                     <tr>
                         <td>#<?php echo $row['id']; ?></td>
                         <td><?php echo $row['name']; ?></td>
@@ -128,29 +264,20 @@ if (isset($_POST['delete_product'])) {
                         <td><?php echo $row['price']; ?></td>
                         <td><?php echo $row['material_type']; ?></td>
                         <td>
-                            <button class="btn btn-primary btn-sm info_product-btn" 
-                                data-id="<?php echo $row['id']; ?>" 
-                                data-name="<?php echo $row['name']; ?>" 
-                                data-created-by="<?php echo $row['created_by']; ?>" 
-                                data-created-at="<?php echo $row['created_at']; ?>" 
-                                data-updated-by="<?php echo $row['updated_by']; ?>" 
-                                data-updated-at="<?php echo $row['updated_at']; ?>">
-                                <i class="bi bi-info-circle"></i>&nbsp;Info
-                            </button>
-                            <button class="btn btn-success btn-sm edit_product-btn" 
-                                data-id="<?php echo $row['id']; ?>" 
-                                data-name="<?php echo $row['name']; ?>" 
-                                data-description="<?php echo $row['description']; ?>" 
-                                data-category="<?php echo $row['category']; ?>" 
-                                data-price="<?php echo $row['price']; ?>"
-                                data-material-id="<?php echo $row['name']; ?>">
-                                    <i class="bi bi-pencil-square"></i>&nbsp;Edit
-                            </button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this product?');">
-                                <input type="hidden" name="delete_product" value="1">
+                            <!-- Activate Button -->
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to activate this product?');">
+                                <input type="hidden" name="activate_product" value="1">
+                                <input type="hidden" name="product_id" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="bi bi-check-circle"></i>&nbsp;Activate
+                                </button>
+                            </form>
+                            <!-- Actual Delete Button -->
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete this product? This action cannot be undone.');">
+                                <input type="hidden" name="actual_delete_product" value="1">
                                 <input type="hidden" name="product_id" value="<?php echo $row['id']; ?>">
                                 <button type="submit" class="btn btn-danger btn-sm">
-                                    <i class="bi bi-trash3"></i>&nbsp;Delete
+                                    <i class="bi bi-trash3"></i>&nbsp;Delete Permanently
                                 </button>
                             </form>
                         </td>
@@ -271,15 +398,33 @@ if (isset($_POST['delete_product'])) {
                         <input type="number" name="price" class="form-control" step="0.01" required>
                     </div>
 
-                    <!-- Material Select -->
+                    <!-- Materials Section -->
                     <div class="mb-3">
-                        <label class="form-label">Material</label>
-                        <select name="material_id" class="form-control" required>
-                            <option value="">Select Material</option>
-                            <?php while ($material = $material_result->fetch_assoc()) { ?>
-                                <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
-                            <?php } ?>
-                        </select>
+                        <label class="form-label">Materials</label>
+                        <div id="materialFields">
+                            <!-- Dynamic fields for materials will be added here -->
+                            <div class="row mb-2">
+                                <div class="col">
+                                    <select name="material_id[]" class="form-control" required>
+                                        <option value="">Select Material</option>
+                                        <?php while ($material = $material_result->fetch_assoc()) { ?>
+                                            <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
+                                        <?php } ?>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <input type="number" name="material_quantity[]" placeholder="Quantity" class="form-control" required>
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-danger btn-sm removeMaterialField" disabled>
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" id="addMaterialField" class="btn btn-secondary btn-sm">
+                            <i class="bi bi-plus"></i>&nbsp;Add Material
+                        </button>
                     </div>
 
                     <!-- Submit Button -->
@@ -364,10 +509,14 @@ if (isset($_POST['delete_product'])) {
             <div class="modal-body">
                 <p><strong>ID:</strong> <span id="infoProductId"></span></p>
                 <p><strong>Product Name:</strong> <span id="infoProductName"></span></p>
-                <p><strong>Created By:</strong> <span id="infoCreatedBy"></span></p>
-                <p><strong>Created At:</strong> <span id="infoCreatedAt"></span></p>
-                <p><strong>Updated By:</strong> <span id="infoUpdatedBy"></span></p>
-                <p><strong>Updated At:</strong> <span id="infoUpdatedAt"></span></p>
+                <p><strong>Description:</strong> <span id="infoProductDescription"></span></p>
+                <p><strong>Category:</strong> <span id="infoProductCategory"></span></p>
+                <p><strong>Price:</strong> <span id="infoProductPrice"></span></p>
+                <p><strong>Materials:</strong> <span id="infoProductMaterials"></span></p>
+                <p><strong>Created By:</strong> <span id="infoProductCreatedBy"></span></p>
+                <p><strong>Created At:</strong> <span id="infoProductCreatedAt"></span></p>
+                <p><strong>Updated By:</strong> <span id="infoProductUpdatedBy"></span></p>
+                <p><strong>Updated At:</strong> <span id="infoProductUpdatedAt"></span></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -384,6 +533,38 @@ if (isset($_POST['delete_product'])) {
     $(document).ready(function() {
         // Initialize DataTable
         $('#productsTable').DataTable();
+
+        // Add Material Field
+        $("#addMaterialField").click(function() {
+            let newField = `
+                <div class="row mb-2">
+                    <div class="col">
+                        <select name="material_id[]" class="form-control" required>
+                            <option value="">Select Material</option>
+                            <?php
+                            $material_result->data_seek(0); // Reset pointer to the beginning
+                            while ($material = $material_result->fetch_assoc()) { ?>
+                                <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
+                            <?php } ?>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="number" name="material_quantity[]" placeholder="Quantity" class="form-control" required>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            $("#materialFields").append(newField);
+        });
+
+        // Remove Material Field
+        $(document).on("click", ".removeMaterialField", function() {
+            $(this).closest(".row").remove();
+        });
 
         // Handle Edit Button Click
         $(document).on("click", ".edit_product-btn", function() {
@@ -406,10 +587,14 @@ if (isset($_POST['delete_product'])) {
             $("#editProductModal").modal("show");
         });
 
-        // Handle Info Button Click
-        $(document).on("click", ".info_product-btn", function() {
+         // Handle Info Button Click
+         $(document).on("click", ".info_product-btn", function() {
             let productId = $(this).data("id");
             let productName = $(this).data("name");
+            let productDescription = $(this).data("description");
+            let productCategory = $(this).data("category");
+            let productPrice = $(this).data("price");
+            let productMaterials = $(this).data("materials");
             let createdBy = $(this).data("created-by");
             let createdAt = $(this).data("created-at");
             let updatedBy = $(this).data("updated-by");
@@ -418,10 +603,14 @@ if (isset($_POST['delete_product'])) {
             // Populate the Info Modal
             $("#infoProductId").text(productId);
             $("#infoProductName").text(productName);
-            $("#infoCreatedBy").text(createdBy);
-            $("#infoCreatedAt").text(createdAt);
-            $("#infoUpdatedBy").text(updatedBy);
-            $("#infoUpdatedAt").text(updatedAt);
+            $("#infoProductDescription").text(productDescription);
+            $("#infoProductCategory").text(productCategory);
+            $("#infoProductPrice").text(productPrice);
+            $("#infoProductMaterials").text(productMaterials);
+            $("#infoProductCreatedBy").text(createdBy);
+            $("#infoProductCreatedAt").text(createdAt);
+            $("#infoProductUpdatedBy").text(updatedBy);
+            $("#infoProductUpdatedAt").text(updatedAt);
 
             // Show the Info Modal
             $("#infoProductModal").modal("show");
