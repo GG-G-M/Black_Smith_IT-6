@@ -138,6 +138,48 @@ if (isset($_POST['add_material'])) {
     exit;
 }
 
+// Handle Out Material
+if (isset($_POST['out_material'])) {
+    $material_id = $_POST['material_id'];
+    $quantity_to_subtract = $_POST['quantity'];
+
+    // Validate inputs
+    if (empty($material_id) || empty($quantity_to_subtract) || $quantity_to_subtract <= 0) {
+        $_SESSION['error'] = "Invalid quantity or material ID.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    // Check if the material exists and has enough quantity
+    $check_sql = "SELECT quantity FROM materials WHERE id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $material_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    $material = $check_result->fetch_assoc();
+
+    if ($material['quantity'] < $quantity_to_subtract) {
+        $_SESSION['error'] = "Not enough quantity available.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    // Subtract the quantity
+    $update_sql = "UPDATE materials SET quantity = quantity - ? WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("ii", $quantity_to_subtract, $material_id);
+    $update_stmt->execute();
+
+    if ($update_stmt->affected_rows > 0) {
+        $_SESSION['success'] = "Quantity subtracted successfully.";
+    } else {
+        $_SESSION['error'] = "Failed to subtract quantity.";
+    }
+
+    $update_stmt->close();
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
 
 // Handle Edit Material
 if (isset($_POST['edit_material'])) {
@@ -222,6 +264,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <td><?php echo $row['supplier_name']; ?></td>
                         <td><?php echo $row['quantity']; ?></td>
                         <td>
+                            <!-- Out Button -->
+                            <button class="btn btn-warning btn-sm out-material-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-material="<?php echo htmlspecialchars($row['material_type'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                    data-quantity="<?php echo $row['quantity']; ?>">
+                                <i class="bi bi-box-arrow-left"></i>&nbsp;Out
+                            </button>
                             <!-- EDIT -->
                             <button class="btn btn-primary btn-sm info-material-btn" 
                                     data-id="<?php echo $row['id']; ?>" 
@@ -562,6 +611,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
+<!-- Out Material Modal -->
+<div class="modal fade" id="outMaterialModal" tabindex="-1" aria-labelledby="outMaterialModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="outMaterialModalLabel">Subtract Material Quantity</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="outMaterialForm" method="POST">
+                    <input type="hidden" name="material_id" id="outMaterialId">
+                    <div class="mb-3">
+                        <label for="outQuantity" class="form-label">Quantity to Subtract</label>
+                        <input type="number" name="quantity" id="outQuantity" class="form-control" required>
+                    </div>
+                    <button type="submit" name="out_material" class="btn btn-warning">Subtract</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Material Modal -->
 <div class="modal fade" id="editMaterialModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -633,6 +704,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Remove Material Field
         $(document).on("click", ".removeMaterialField", function() {
             $(this).closest(".row").remove();
+        });
+
+         // Handle Out Button Click
+         $(document).on("click", ".out-material-btn", function() {
+            let materialId = $(this).data("id");
+            let materialName = $(this).data("material");
+            let currentQuantity = $(this).data("quantity");
+
+            // Set the material ID in the hidden input
+            $("#outMaterialId").val(materialId);
+
+            // Show the modal
+            $("#outMaterialModal").modal("show");
+        });
+
+        // Handle Out Form Submission
+        $("#outMaterialForm").submit(function(e) {
+            e.preventDefault();
+            $.ajax({
+                url: "",
+                type: "POST",
+                data: $(this).serialize() + "&out_material=1",
+                success: function(response) {
+                    location.reload(); // Reload the page to reflect changes
+                }
+            });
         });
 
         // Edit Supplier Modal
