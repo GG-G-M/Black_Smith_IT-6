@@ -13,11 +13,15 @@ $materials_sql = "SELECT materials.id, materials.material_type, suppliers.suppli
                   JOIN suppliers ON materials.supplier_id = suppliers.id
                   LEFT JOIN users AS creator ON materials.created_by = creator.id
                   LEFT JOIN users AS updater ON materials.updated_by = updater.id";
-$material_result = $conn->query($materials_sql);
+// ACTIVE
+$materials_sql_where_1 = $materials_sql . " WHERE materials.is_active = 1";
+$active_material_result = $conn->query($materials_sql_where_1);
+if (!$active_material_result) {die("Error fetching materials: " . $conn->error);} // Error handling
 
-if (!$material_result) {
-    die("Error fetching materials: " . $conn->error); // Add error handling
-}
+// INACTIVE
+$materials_sql_where_2 = $materials_sql . " WHERE materials.is_active = 0";
+$inactive_material_result = $conn->query($materials_sql_where_2);
+if (!$inactive_material_result) {die("Error fetching materials: " . $conn->error);} // Error handling
 
 // Fetch suppliers with user details
 $supplier_sql = "SELECT suppliers.id, suppliers.supplier_name, suppliers.supplier_info, 
@@ -76,54 +80,130 @@ if (isset($_POST['add_material'])) {
         exit;
     }
 
-    // Loop through each material and quantity
-    foreach ($material_types as $index => $material_type) {
-        $quantity = $quantities[$index];
+    // Start a transaction
+    $conn->begin_transaction();
 
-        // Check if the material already exists for the same supplier
-        $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
-        $check_stmt = $conn->prepare($check_sql);
-        $check_stmt->bind_param("si", $material_type, $supplier_id);
-        $check_stmt->execute();
-        $check_result = $check_stmt->get_result();
+    try {
+        // Loop through each material and quantity
+        foreach ($material_types as $index => $material_type) {
+            $quantity = $quantities[$index];
 
-        if ($check_result->num_rows > 0) {
-            // Material exists, update the quantity
-            $row = $check_result->fetch_assoc();
-            $material_id = $row['id'];
-            $new_quantity = $row['quantity'] + $quantity;
+            // Check if the material already exists for the same supplier
+            $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
+            $check_stmt = $conn->prepare($check_sql);
+            $check_stmt->bind_param("si", $material_type, $supplier_id);
+            $check_stmt->execute();
+            $check_result = $check_stmt->get_result();
 
-            $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
-            $update_stmt = $conn->prepare($update_sql);
-            $update_stmt->bind_param("ii", $new_quantity, $material_id);
-            $update_stmt->execute();
-            $update_stmt->close();
+            if ($check_result->num_rows > 0) {
+                // Material exists, update the quantity
+                $row = $check_result->fetch_assoc();
+                $material_id = $row['id'];
+                $new_quantity = $row['quantity'] + $quantity;
 
-            // Log the transaction (update)
-            $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
-            $log_stmt = $conn->prepare($log_sql);
-            $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
-            $log_stmt->execute();
-            $log_stmt->close();
-        } else {
-            // Material does not exist, insert a new row
-            $insert_sql = "INSERT INTO materials (material_type, supplier_id, quantity) VALUES (?, ?, ?)";
-            $insert_stmt = $conn->prepare($insert_sql);
-            $insert_stmt->bind_param("sii", $material_type, $supplier_id, $quantity);
-            $insert_stmt->execute();
-            $material_id = $conn->insert_id; // Get the ID of the newly inserted material
-            $insert_stmt->close();
+                $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
+                $update_stmt = $conn->prepare($update_sql);
+                $update_stmt->bind_param("ii", $new_quantity, $material_id);
+                $update_stmt->execute();
+                $update_stmt->close();
+            } else {
+                // Material does not exist, insert a new row
+                $insert_sql = "INSERT INTO materials (material_type, supplier_id, quantity) VALUES (?, ?, ?)";
+                $insert_stmt = $conn->prepare($insert_sql);
+                $insert_stmt->bind_param("sii", $material_type, $supplier_id, $quantity);
+                $insert_stmt->execute();
+                $material_id = $conn->insert_id;
+                $insert_stmt->close();
+            }
 
-            // Log the transaction (new material)
-            $log_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
-            $log_stmt = $conn->prepare($log_sql);
-            $log_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
-            $log_stmt->execute();
-            $log_stmt->close();
+            // Transaction Log
+            $stock_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES (?, ?, ?)";
+            $stock_stmt = $conn->prepare($stock_sql);
+            $stock_stmt->bind_param("iii", $supplier_id, $material_id, $quantity);
+            $stock_stmt->execute();
+            $stock_stmt->close();
         }
+
+        // Commit the transaction
+        $conn->commit();
+
+        $_SESSION['success'] = "Materials added successfully.";
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
     }
 
-    $_SESSION['success'] = "Materials added successfully.";
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Handle Materials Out (Remove Materials)
+if (isset($_POST['materials_out'])) {
+    $supplier_id = $_POST['supplier_id'];
+    $material_types = $_POST['material_type'];
+    $quantities = $_POST['quantity'];
+
+    // Validate inputs
+    if (empty($supplier_id) || empty($material_types) || empty($quantities)) {
+        $_SESSION['error'] = "Please fill all fields.";
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    }
+
+    // Start a transaction
+    $conn->begin_transaction();
+
+    try {
+        // Loop through each material and quantity
+        foreach ($material_types as $index => $material_type) {
+            $quantity = $quantities[$index];
+
+            // Check if the material exists for the same supplier
+            $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
+            $check_stmt = $conn->prepare($check_sql);
+            $check_stmt->bind_param("si", $material_type, $supplier_id);
+            $check_stmt->execute();
+            $check_result = $check_stmt->get_result();
+
+            if ($check_result->num_rows > 0) {
+                $row = $check_result->fetch_assoc();
+                $material_id = $row['id'];
+                $current_quantity = $row['quantity'];
+
+                // Check if there's enough quantity to remove
+                if ($current_quantity >= $quantity) {
+                    // Update the quantity in the materials table
+                    $new_quantity = $current_quantity - $quantity;
+                    $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
+                    $update_stmt = $conn->prepare($update_sql);
+                    $update_stmt->bind_param("ii", $new_quantity, $material_id);
+                    $update_stmt->execute();
+                    $update_stmt->close();
+
+                    $stock_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES ( ?, ?, ?)";
+                    $stock_stmt = $conn->prepare($stock_sql);
+                    $stock_stmt->bind_param("iii",  $supplier_id, $material_id, -$quantity);
+                    $stock_stmt->execute();
+                    $stock_stmt->close();
+                } else {
+                    // Not enough quantity to remove
+                    throw new Exception("Not enough quantity for material: $material_type");
+                }
+            } else {
+                // Material does not exist
+                throw new Exception("Material not found: $material_type");
+            }
+        }
+        $conn->commit();
+
+        $_SESSION['success'] = "Materials removed successfully.";
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+    }
+
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -147,6 +227,15 @@ if (isset($_POST['delete_material'])) {
     exit;
 }
 
+// Activation/deactivation
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['toggle_status'])) {
+        $materialId = intval($_POST['toggle_status']);
+        $conn->query("UPDATE materials SET is_active = 1 - is_active WHERE id = $materialId"); //basically if 1 value then 1 - 1 = 0 otherwise if 0 value then 0 - 1 = 1, so it's a toggle
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -173,17 +262,23 @@ if (isset($_POST['delete_material'])) {
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal">
             <i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials
         </button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#materialsOutModal">
+            <i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials
+        </button>
         <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#suppliersModal">
             <i class="bi bi-person-fill-down"></i>&nbsp;Suppliers
         </button>
         <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#transactionLogModal">
             <i class="bi bi-list-check"></i>&nbsp;Transaction Log
         </button>
+
+        
     </div>
 
-    <!-- Data Table -->
+    <!-- Active Data Table -->
+    <h4 class="text-success">Active Materials</h4>
     <div class="table-container">
-        <table id="materialsTable" class="table table-hover">
+        <table id="activematerialsTable" class="table table-hover">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -194,41 +289,97 @@ if (isset($_POST['delete_material'])) {
                 </tr>
             </thead>
             <tbody id="materialsList">
-            <?php while ($row = $material_result->fetch_assoc()) { ?>
-    <tr>
-        <td>#<?php echo $row['id']; ?></td>
-        <td><?php echo $row['material_type']; ?></td>
-        <td><?php echo $row['supplier_name']; ?></td>
-        <td><?php echo $row['quantity']; ?></td>
-        <td>
-             <button class="btn btn-primary btn-sm info-material-btn" 
-                    data-id="<?php echo $row['id']; ?>" 
-                    data-material="<?php echo htmlspecialchars($row['material_type'], ENT_QUOTES, 'UTF-8'); ?>" 
-                    data-supplier="<?php echo htmlspecialchars($row['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
-                    data-quantity="<?php echo $row['quantity']; ?>"
-                    data-created-by="<?php echo htmlspecialchars($row['created_by'], ENT_QUOTES, 'UTF-8'); ?>"
-                    data-created-at="<?php echo htmlspecialchars($row['created_at'], ENT_QUOTES, 'UTF-8'); ?>"
-                    data-updated-by="<?php echo htmlspecialchars($row['updated_by'], ENT_QUOTES, 'UTF-8'); ?>"
-                    data-updated-at="<?php echo htmlspecialchars($row['updated_at'], ENT_QUOTES, 'UTF-8'); ?>">
-                <i class="bi bi-info-circle"></i>&nbsp;Info
-            </button>
-            <button class="btn btn-success btn-sm edit_material-btn" 
-                    data-id="<?php echo $row['id']; ?>" 
-                    data-material="<?php echo $row['material_type']; ?>" 
-                    data-supplier="<?php echo $row['supplier_name']; ?>" 
-                    data-quantity="<?php echo $row['quantity']; ?>">
-                <i class="bi bi-pencil-square"></i>&nbsp;Edit
-            </button>
-            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this material?');">
-                <input type="hidden" name="delete_material" value="1">
-                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
-                <button type="submit" class="btn btn-danger btn-sm">
-                    <i class="bi bi-trash3"></i>&nbsp;Delete
-                </button>
-            </form>
-        </td>
-    </tr>
-<?php } ?>
+                <?php while ($row = $active_material_result->fetch_assoc()) { ?>
+                    <tr>
+                        <td>#<?php echo $row['id']; ?></td>
+                        <td><?php echo $row['material_type']; ?></td>
+                        <td><?php echo $row['supplier_name']; ?></td>
+                        <td><?php echo $row['quantity']; ?></td>
+                        <td>
+                            <!-- EDIT -->
+                            <button class="btn btn-primary btn-sm info-material-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-material="<?php echo htmlspecialchars($row['material_type'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                    data-supplier="<?php echo htmlspecialchars($row['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                    data-quantity="<?php echo $row['quantity']; ?>"
+                                    data-created-by="<?php echo htmlspecialchars($row['created_by'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-created-at="<?php echo htmlspecialchars($row['created_at'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-updated-by="<?php echo htmlspecialchars($row['updated_by'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-updated-at="<?php echo htmlspecialchars($row['updated_at'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <i class="bi bi-info-circle"></i>&nbsp;Info
+                            </button>
+                            <button class="btn btn-success btn-sm edit_material-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-material="<?php echo $row['material_type']; ?>" 
+                                    data-supplier="<?php echo $row['supplier_name']; ?>" 
+                                    data-quantity="<?php echo $row['quantity']; ?>">
+                                <i class="bi bi-pencil-square"></i>&nbsp;Edit
+                            </button>
+                            <!-- ACTIVE -->
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="toggle_status" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="bi bi-person-check-fill"></i> Active
+                                </button>
+                            </form>
+                            <!-- DELETE -->
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this material?');">
+                                <input type="hidden" name="delete_material" value="1">
+                                <input type="hidden" name="material_id" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-trash3"></i>&nbsp;Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Deactive Data Table -->
+    <h4 class="text-danger">Deactive Materials</h4>
+    <div class="table-container">
+        <table id="inactivematerialsTable" class="table table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Material</th>
+                    <th>Supplier</th>
+                    <th>Quantity</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="materialsList">
+                <?php while ($row = $inactive_material_result->fetch_assoc()) { ?>
+                    <tr>
+                        <td>#<?php echo $row['id']; ?></td>
+                        <td><?php echo $row['material_type']; ?></td>
+                        <td><?php echo $row['supplier_name']; ?></td>
+                        <td><?php echo $row['quantity']; ?></td>
+                        <td>
+                            <!-- INFO -->
+                            <button class="btn btn-primary btn-sm info-material-btn" 
+                                    data-id="<?php echo $row['id']; ?>" 
+                                    data-material="<?php echo htmlspecialchars($row['material_type'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                    data-supplier="<?php echo htmlspecialchars($row['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                    data-quantity="<?php echo $row['quantity']; ?>"
+                                    data-created-by="<?php echo htmlspecialchars($row['created_by'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-created-at="<?php echo htmlspecialchars($row['created_at'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-updated-by="<?php echo htmlspecialchars($row['updated_by'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-updated-at="<?php echo htmlspecialchars($row['updated_at'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <i class="bi bi-info-circle"></i>&nbsp;Info
+                            </button>
+                            <!-- ACTIVE -->
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="toggle_status" value="<?php echo $row['id']; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="bi bi-person-check-fill"></i> Deactive
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php } ?>
             </tbody>
         </table>
     </div>
@@ -236,27 +387,27 @@ if (isset($_POST['delete_material'])) {
 
 <!-- Info Material Modal -->
 <div class="modal fade" id="infoMaterialModal" tabindex="-1" aria-labelledby="infoMaterialModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="infoMaterialModalLabel">Material Info</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p><strong>ID:</strong> <span id="infoMaterialId"></span></p>
-        <p><strong>Material Type:</strong> <span id="infoMaterialType"></span></p>
-        <p><strong>Supplier:</strong> <span id="infoMaterialSupplier"></span></p>
-        <p><strong>Quantity:</strong> <span id="infoMaterialQuantity"></span></p>
-        <p><strong>Created By:</strong> <span id="infoMaterialCreatedBy"></span></p>
-        <p><strong>Created At:</strong> <span id="infoMaterialCreatedAt"></span></p>
-        <p><strong>Updated By:</strong> <span id="infoMaterialUpdatedBy"></span></p>
-        <p><strong>Updated At:</strong> <span id="infoMaterialUpdatedAt"></span></p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="infoMaterialModalLabel">Material Info</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>ID:</strong> <span id="infoMaterialId"></span></p>
+                <p><strong>Material Type:</strong> <span id="infoMaterialType"></span></p>
+                <p><strong>Supplier:</strong> <span id="infoMaterialSupplier"></span></p>
+                <p><strong>Quantity:</strong> <span id="infoMaterialQuantity"></span></p>
+                <p><strong>Created By:</strong> <span id="infoMaterialCreatedBy"></span></p>
+                <p><strong>Created At:</strong> <span id="infoMaterialCreatedAt"></span></p>
+                <p><strong>Updated By:</strong> <span id="infoMaterialUpdatedBy"></span></p>
+                <p><strong>Updated At:</strong> <span id="infoMaterialUpdatedAt"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- Suppliers Modal -->
@@ -294,7 +445,6 @@ if (isset($_POST['delete_material'])) {
                                 <td><?php echo $supplier['supplier_name']; ?></td>
                                 <td><?php echo $supplier['supplier_info']; ?></td>
                                 <td>
-                                    
                                     <button class="btn btn-warning btn-sm edit-supplier" 
                                             data-id="<?php echo $supplier['id']; ?>" 
                                             data-name="<?php echo htmlspecialchars($supplier['supplier_name'], ENT_QUOTES, 'UTF-8'); ?>" 
@@ -356,26 +506,26 @@ if (isset($_POST['delete_material'])) {
 
 <!-- Info Supplier Modal -->
 <div class="modal fade" id="infoSupplierModal" tabindex="-1" aria-labelledby="infoSupplierModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="infoSupplierModalLabel">Supplier Info</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p><strong>ID:</strong> <span id="infoSupplierId"></span></p>
-        <p><strong>Supplier Name:</strong> <span id="infoSupplierName"></span></p>
-        <p><strong>Info:</strong> <span id="infoSupplierInfo"></span></p>
-        <p><strong>Created By:</strong> <span id="infoCreatedBy"></span></p>
-        <p><strong>Created At:</strong> <span id="infoCreatedAt"></span></p>
-        <p><strong>Updated By:</strong> <span id="infoUpdatedBy"></span></p>
-        <p><strong>Updated At:</strong> <span id="infoUpdatedAt"></span></p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="infoSupplierModalLabel">Supplier Info</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>ID:</strong> <span id="infoSupplierId"></span></p>
+                <p><strong>Supplier Name:</strong> <span id="infoSupplierName"></span></p>
+                <p><strong>Info:</strong> <span id="infoSupplierInfo"></span></p>
+                <p><strong>Created By:</strong> <span id="infoCreatedBy"></span></p>
+                <p><strong>Created At:</strong> <span id="infoCreatedAt"></span></p>
+                <p><strong>Updated By:</strong> <span id="infoUpdatedBy"></span></p>
+                <p><strong>Updated At:</strong> <span id="infoUpdatedAt"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- Transaction Log Modal -->
@@ -485,6 +635,64 @@ if (isset($_POST['delete_material'])) {
     </div>
 </div>
 
+<!-- Materials Out Modal -->
+<div class="modal fade" id="materialsOutModal" tabindex="-1" aria-labelledby="materialsOutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="materialsOutModalLabel">Remove Materials</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Materials Out Form -->
+                <form method="POST">
+                    <!-- Supplier Select -->
+                    <select name="supplier_id" required class="form-control mb-2">
+                        <option value="">Select Supplier</option>
+                        <?php
+                        // Fetch suppliers from the database
+                        $supplier_sql = "SELECT id, supplier_name FROM suppliers";
+                        $supplier_result = $conn->query($supplier_sql);
+                        if ($supplier_result->num_rows > 0) {
+                            while ($supplier = $supplier_result->fetch_assoc()) {
+                                echo '<option value="' . htmlspecialchars($supplier['id']) . '">' . htmlspecialchars($supplier['supplier_name']) . '</option>';
+                            }
+                        } else {
+                            echo '<option value="">No suppliers available</option>';
+                        }
+                        ?>
+                    </select>
+
+                    <!-- Dynamic Material Fields -->
+                    <div id="materialsOutFields">
+                        <div class="row mb-2">
+                            <div class="col">
+                                <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
+                            </div>
+                            <div class="col">
+                                <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add More Material Button -->
+                    <button type="button" id="addMaterialOutField" class="btn btn-secondary btn-sm mb-3">
+                        <i class="bi bi-plus"></i>&nbsp;Add Material
+                    </button>
+
+                    <!-- Submit Button -->
+                    <button type="submit" name="materials_out" class="btn btn-danger">Remove Materials</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Material Modal -->
 <div class="modal fade" id="editMaterialModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -531,7 +739,32 @@ if (isset($_POST['delete_material'])) {
 <script>
     $(document).ready(function() {
         // Initialize DataTable
-        $('#materialsTable').DataTable();
+        $('#activematerialsTable, #inactivematerialsTable').DataTable();
+
+        // Add Material Field
+        $("#addMaterialField").click(function() {
+            let newField = `
+                <div class="row mb-2">
+                    <div class="col">
+                        <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
+                    </div>
+                    <div class="col">
+                        <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            $("#materialFields").append(newField);
+        });
+
+        // Remove Material Field
+        $(document).on("click", ".removeMaterialField", function() {
+            $(this).closest(".row").remove();
+        });
 
         // Edit Supplier Modal
         $(document).on("click", ".edit-supplier", function() {
@@ -558,6 +791,31 @@ if (isset($_POST['delete_material'])) {
             });
         });
 
+// Add Material Field
+$("#addMaterialOutField").click(function() {
+        let newField = `
+            <div class="row mb-2">
+                <div class="col">
+                    <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
+                </div>
+                <div class="col">
+                    <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        $("#materialsOutFields").append(newField);
+    });
+
+    // Remove Material Field
+    $(document).on("click", ".removeMaterialField", function() {
+        $(this).closest(".row").remove();
+    });
+
         // Info Supplier Modal
         $(document).on("click", ".info-supplier", function(){
             $("#infoSupplierId").text($(this).data("id"));
@@ -569,6 +827,7 @@ if (isset($_POST['delete_material'])) {
             $("#infoUpdatedAt").text($(this).data("updated-at") ? $(this).data("updated-at") : "N/A");
             $("#infoSupplierModal").modal("show");
         });
+
         // Edit Material Button
         $(document).on("click", ".edit_material-btn", function() {
             let materialId = $(this).data("id");
@@ -582,41 +841,20 @@ if (isset($_POST['delete_material'])) {
             $("#editQuantity").val(quantity);
             $("#editMaterialModal").modal("show");
         });
+
+        // Info Material Button
+        $(document).on("click", ".info-material-btn", function() {
+            $("#infoMaterialId").text($(this).data("id"));
+            $("#infoMaterialType").text($(this).data("material"));
+            $("#infoMaterialSupplier").text($(this).data("supplier"));
+            $("#infoMaterialQuantity").text($(this).data("quantity"));
+            $("#infoMaterialCreatedBy").text($(this).data("created-by") ? $(this).data("created-by") : "N/A");
+            $("#infoMaterialCreatedAt").text($(this).data("created-at") ? $(this).data("created-at") : "N/A");
+            $("#infoMaterialUpdatedBy").text($(this).data("updated-by") ? $(this).data("updated-by") : "N/A");
+            $("#infoMaterialUpdatedAt").text($(this).data("updated-at") ? $(this).data("updated-at") : "N/A");
+            $("#infoMaterialModal").modal("show");
+        });
     });
-
-    $(document).on("click", ".info-material-btn", function() {
-    // Populate the modal with data attributes
-        $("#infoMaterialId").text($(this).data("id"));
-        $("#infoMaterialType").text($(this).data("material"));
-        $("#infoMaterialSupplier").text($(this).data("supplier"));
-        $("#infoMaterialQuantity").text($(this).data("quantity"));
-        $("#infoMaterialCreatedBy").text($(this).data("created-by") ? $(this).data("created-by") : "N/A");
-        $("#infoMaterialCreatedAt").text($(this).data("created-at") ? $(this).data("created-at") : "N/A");
-        $("#infoMaterialUpdatedBy").text($(this).data("updated-by") ? $(this).data("updated-by") : "N/A");
-        $("#infoMaterialUpdatedAt").text($(this).data("updated-at") ? $(this).data("updated-at") : "N/A");
-
-    // Show the modal
-    $("#infoMaterialModal").modal("show");
-});
-
-$(document).ready(function() {
-    // Handle Edit Button Click
-    $(document).on("click", ".edit_material-btn", function() {
-        let materialId = $(this).data("id");
-        let materialType = $(this).data("material");
-        let supplierId = $(this).data("supplier");
-        let quantity = $(this).data("quantity");
-
-        // Populate the Edit Modal
-        $("#editMaterialId").val(materialId);
-        $("#editMaterialType").val(materialType);
-        $("#editSupplierId").val(supplierId);
-        $("#editQuantity").val(quantity);
-
-        // Show the Edit Modal
-        $("#editMaterialModal").modal("show");
-    });
-});
 </script>
 
 </body>

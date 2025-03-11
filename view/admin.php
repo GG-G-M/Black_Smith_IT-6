@@ -13,7 +13,7 @@ $inactiveUsers = $conn->query("SELECT * FROM users WHERE is_active = 0");
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['toggle_status'])) {
         $userId = intval($_POST['toggle_status']);
-        $conn->query("UPDATE users SET is_active = 1 - is_active WHERE id = $userId");
+        $conn->query("UPDATE users SET is_active = 1 - is_active WHERE id = $userId"); //basically if 1 value then 1 - 1 = 0 otherwise if 0 value then 0 - 1 = 1, so it's a toggle
         header("Location: admin.php");
         exit;
     }
