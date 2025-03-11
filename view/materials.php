@@ -138,75 +138,6 @@ if (isset($_POST['add_material'])) {
     exit;
 }
 
-// Handle Materials Out (Remove Materials)
-if (isset($_POST['materials_out'])) {
-    $supplier_id = $_POST['supplier_id'];
-    $material_types = $_POST['material_type'];
-    $quantities = $_POST['quantity'];
-
-    // Validate inputs
-    if (empty($supplier_id) || empty($material_types) || empty($quantities)) {
-        $_SESSION['error'] = "Please fill all fields.";
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit;
-    }
-
-    // Start a transaction
-    $conn->begin_transaction();
-
-    try {
-        // Loop through each material and quantity
-        foreach ($material_types as $index => $material_type) {
-            $quantity = $quantities[$index];
-
-            // Check if the material exists for the same supplier
-            $check_sql = "SELECT id, quantity FROM materials WHERE material_type = ? AND supplier_id = ?";
-            $check_stmt = $conn->prepare($check_sql);
-            $check_stmt->bind_param("si", $material_type, $supplier_id);
-            $check_stmt->execute();
-            $check_result = $check_stmt->get_result();
-
-            if ($check_result->num_rows > 0) {
-                $row = $check_result->fetch_assoc();
-                $material_id = $row['id'];
-                $current_quantity = $row['quantity'];
-
-                // Check if there's enough quantity to remove
-                if ($current_quantity >= $quantity) {
-                    // Update the quantity in the materials table
-                    $new_quantity = $current_quantity - $quantity;
-                    $update_sql = "UPDATE materials SET quantity = ? WHERE id = ?";
-                    $update_stmt = $conn->prepare($update_sql);
-                    $update_stmt->bind_param("ii", $new_quantity, $material_id);
-                    $update_stmt->execute();
-                    $update_stmt->close();
-
-                    $stock_sql = "INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES ( ?, ?, ?)";
-                    $stock_stmt = $conn->prepare($stock_sql);
-                    $stock_stmt->bind_param("iii",  $supplier_id, $material_id, -$quantity);
-                    $stock_stmt->execute();
-                    $stock_stmt->close();
-                } else {
-                    // Not enough quantity to remove
-                    throw new Exception("Not enough quantity for material: $material_type");
-                }
-            } else {
-                // Material does not exist
-                throw new Exception("Material not found: $material_type");
-            }
-        }
-        $conn->commit();
-
-        $_SESSION['success'] = "Materials removed successfully.";
-    } catch (Exception $e) {
-        // Rollback the transaction on error
-        $conn->rollback();
-        $_SESSION['error'] = "Error: " . $e->getMessage();
-    }
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit;
-}
 
 // Handle Edit Material
 if (isset($_POST['edit_material'])) {
@@ -262,17 +193,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addMaterialModal">
             <i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials
         </button>
-        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#materialsOutModal">
-            <i class="bi bi-wrench-adjustable-circle-fill"></i>&nbsp;Add Materials
-        </button>
         <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#suppliersModal">
             <i class="bi bi-person-fill-down"></i>&nbsp;Suppliers
         </button>
         <button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#transactionLogModal">
             <i class="bi bi-list-check"></i>&nbsp;Transaction Log
         </button>
-
-        
     </div>
 
     <!-- Active Data Table -->
@@ -330,6 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <i class="bi bi-trash3"></i>&nbsp;Delete
                                 </button>
                             </form>
+                            <!-- CONSUME -->
                         </td>
                     </tr>
                 <?php } ?>
@@ -635,64 +562,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </div>
 
-<!-- Materials Out Modal -->
-<div class="modal fade" id="materialsOutModal" tabindex="-1" aria-labelledby="materialsOutModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="materialsOutModalLabel">Remove Materials</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Materials Out Form -->
-                <form method="POST">
-                    <!-- Supplier Select -->
-                    <select name="supplier_id" required class="form-control mb-2">
-                        <option value="">Select Supplier</option>
-                        <?php
-                        // Fetch suppliers from the database
-                        $supplier_sql = "SELECT id, supplier_name FROM suppliers";
-                        $supplier_result = $conn->query($supplier_sql);
-                        if ($supplier_result->num_rows > 0) {
-                            while ($supplier = $supplier_result->fetch_assoc()) {
-                                echo '<option value="' . htmlspecialchars($supplier['id']) . '">' . htmlspecialchars($supplier['supplier_name']) . '</option>';
-                            }
-                        } else {
-                            echo '<option value="">No suppliers available</option>';
-                        }
-                        ?>
-                    </select>
-
-                    <!-- Dynamic Material Fields -->
-                    <div id="materialsOutFields">
-                        <div class="row mb-2">
-                            <div class="col">
-                                <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
-                            </div>
-                            <div class="col">
-                                <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
-                            </div>
-                            <div class="col-auto">
-                                <button type="button" class="btn btn-danger btn-sm removeMaterialField">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Add More Material Button -->
-                    <button type="button" id="addMaterialOutField" class="btn btn-secondary btn-sm mb-3">
-                        <i class="bi bi-plus"></i>&nbsp;Add Material
-                    </button>
-
-                    <!-- Submit Button -->
-                    <button type="submit" name="materials_out" class="btn btn-danger">Remove Materials</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Edit Material Modal -->
 <div class="modal fade" id="editMaterialModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -790,31 +659,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             });
         });
-
-// Add Material Field
-$("#addMaterialOutField").click(function() {
-        let newField = `
-            <div class="row mb-2">
-                <div class="col">
-                    <input type="text" name="material_type[]" placeholder="Material Type (e.g., Steel)" required class="form-control">
-                </div>
-                <div class="col">
-                    <input type="number" name="quantity[]" placeholder="Quantity" required class="form-control">
-                </div>
-                <div class="col-auto">
-                    <button type="button" class="btn btn-danger btn-sm removeMaterialField">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-        $("#materialsOutFields").append(newField);
-    });
-
-    // Remove Material Field
-    $(document).on("click", ".removeMaterialField", function() {
-        $(this).closest(".row").remove();
-    });
 
         // Info Supplier Modal
         $(document).on("click", ".info-supplier", function(){
