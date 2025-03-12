@@ -1,7 +1,7 @@
 
 -- DROP DATABASE IF EXISTS inventory_system;
 
--- ✅7 out of 12 Completed✅
+-- ✅10 out of 12 Completed✅
 
 -- Create the database
 CREATE DATABASE IF NOT EXISTS inventory_system;
@@ -70,29 +70,6 @@ CREATE TABLE products (
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Product_Materials Table
-CREATE TABLE product_materials (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT NOT NULL,
-    material_id INT NOT NULL,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-    FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE
-);
-
--- Customer Table
-CREATE TABLE customer (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_name VARCHAR(255) NOT NULL,
-    customer_contact VARCHAR(255),
-    customer_address VARCHAR(255),
-    created_by INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_by INT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
 -- Inventory Table ✅
 CREATE TABLE inventory (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -107,18 +84,33 @@ CREATE TABLE inventory (
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Orders Table
+-- Customer Table ✅
+CREATE TABLE customer (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_contact VARCHAR(255),
+    customer_address VARCHAR(255),
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by INT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Orders Table ✅
 CREATE TABLE orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_name VARCHAR(255) NOT NULL, -- Manually typed customer name
+    customer_id INT, -- No not null cause error cause order table and customer is made together at the same time
     order_date DATE NOT NULL,
     status ENUM('Pending', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Pending', -- Order status
     amount_paid DECIMAL(10,2) DEFAULT 0, -- Amount paid by the customer
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE
 );
 
--- Order Details Table
+-- Order Details Table ✅
 CREATE TABLE order_details (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id INT NOT NULL,
@@ -127,6 +119,16 @@ CREATE TABLE order_details (
     unique_price DECIMAL(10,2) NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+
+-- Order Log
+CREATE TABLE order_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(255) NOT NULL, -- e.g., "Add Order", "Edit Order", "Delete Order"
+    details TEXT,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Invoice Table (Sales)
@@ -142,16 +144,6 @@ CREATE TABLE invoice (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE,
     FOREIGN KEY (order_details_id) REFERENCES order_details(id) ON DELETE CASCADE
-);
-
--- Order Log
-CREATE TABLE order_log (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    action VARCHAR(255) NOT NULL, -- e.g., "Add Order", "Edit Order", "Delete Order"
-    details TEXT,
-    user_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Stock Transactions (Purchases) ✅

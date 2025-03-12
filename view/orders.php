@@ -5,9 +5,16 @@ include '../Handler/db.php';
 
 $full_name = $_SESSION['full_name']; // Get logged-in user's name
 
-// Fetch orders
-$orders_sql = "SELECT * FROM orders";
-$order_result = $conn->query($orders_sql);
+$customer_sql = "SELECT * FROM customer";
+$customer_result = $conn->query($customer_sql);
+
+// Fetch ongoing orders (Pending or Cancelled)
+$ongoing_orders_sql = "SELECT * FROM orders WHERE status IN ('Pending', 'Cancelled')";
+$ongoing_orders_result = $conn->query($ongoing_orders_sql);
+
+// Fetch completed orders
+$completed_orders_sql = "SELECT * FROM orders WHERE status = 'Completed'";
+$completed_orders_result = $conn->query($completed_orders_sql);
 
 // Fetch products for order details
 $products_sql = "SELECT id, name, price FROM products";
@@ -16,15 +23,22 @@ $products_result = $conn->query($products_sql);
 // Handle Add Order
 if (isset($_POST['add_order'])) {
     $customer_name = $_POST['customer_name'];
+    $customer_contact = $_POST['customer_contact'];
+    $customer_address = $_POST['customer_address'];
     $order_date = $_POST['order_date'];
     $status = $_POST['status'];
     $amount_paid = $_POST['amount_paid'];
 
-    // Insert the order
-    $stmt = $conn->prepare("INSERT INTO orders (customer_name, order_date, status, amount_paid) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("sssd", $customer_name, $order_date, $status, $amount_paid);
+    // Insert Customer
+    $stmt = $conn->prepare("INSERT INTO customer (customer_name, customer_contact, customer_address) VALUES (?, ?, ?)");
+    $stmt->bind_param("sss", $customer_name, $customer_contact, $customer_address);
     $stmt->execute();
-    $order_id = $conn->insert_id; // Get the newly inserted order ID
+
+    // Insert the order
+    $stmt = $conn->prepare("INSERT INTO orders (order_date, status, amount_paid) VALUES ( ?, ?, ?)");
+    $stmt->bind_param("ssd", $order_date, $status, $amount_paid);
+    $stmt->execute();
+    $order_id = $conn->insert_id;
 
     // Insert order details (products)
     if (isset($_POST['product_id'])) {
@@ -50,13 +64,15 @@ if (isset($_POST['add_order'])) {
 if (isset($_POST['edit_order'])) {
     $order_id = $_POST['order_id'];
     $customer_name = $_POST['customer_name'];
+    $customer_contact = $_POST['customer_contact'];
+    $customer_address = $_POST['customer_address'];
     $order_date = $_POST['order_date'];
     $status = $_POST['status'];
     $amount_paid = $_POST['amount_paid'];
 
     // Update the order
-    $stmt = $conn->prepare("UPDATE orders SET customer_name = ?, order_date = ?, status = ?, amount_paid = ? WHERE id = ?");
-    $stmt->bind_param("sssdi", $customer_name, $order_date, $status, $amount_paid, $order_id);
+    $stmt = $conn->prepare("UPDATE orders SET customer_name = ?, customer_contact = ?, customer_address = ?, order_date = ?, status = ?, amount_paid = ? WHERE id = ?");
+    $stmt->bind_param("sssssdi", $customer_name, $customer_contact, $customer_address, $order_date, $status, $amount_paid, $order_id);
     $stmt->execute();
 
     $_SESSION['success'] = "Order updated successfully.";
@@ -78,7 +94,19 @@ if (isset($_POST['delete_order'])) {
     exit;
 }
 
+// Handle Complete Order
+if (isset($_POST['complete_order'])) {
+    $order_id = $_POST['order_id'];
 
+    // Update the order status to "Completed"
+    $stmt = $conn->prepare("UPDATE orders SET status = 'Completed' WHERE id = ?");
+    $stmt->bind_param("i", $order_id);
+    $stmt->execute();
+
+    $_SESSION['success'] = "Order marked as completed.";
+    header("Location: orders.php");
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -105,13 +133,16 @@ if (isset($_POST['delete_order'])) {
         </button>
     </div>
 
-    <!-- Orders Table -->
+    <!-- Ongoing Orders Table -->
+    <h4>Ongoing Orders</h4>
     <div class="table-container">
-        <table id="ordersTable" class="table table-hover">
+        <table id="ongoingOrdersTable" class="table table-hover">
             <thead>
                 <tr>
                     <th>ID</th>
                     <th>Customer</th>
+                    <th>Contact</th>
+                    <th>Address</th>
                     <th>Order Date</th>
                     <th>Status</th>
                     <th>Amount Paid</th>
@@ -119,17 +150,22 @@ if (isset($_POST['delete_order'])) {
                 </tr>
             </thead>
             <tbody>
-                <?php while ($row = $order_result->fetch_assoc()) { ?>
+                <?php   while ($row = $ongoing_orders_result->fetch_assoc()) 
+                        while ($rowCustomer = $customer_result->fetch_assoc()){ ?>
                     <tr>
                         <td><?php echo $row['id']; ?></td>
-                        <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_name']); ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_contact']); ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_address']); ?></td>
                         <td><?php echo $row['order_date']; ?></td>
                         <td><?php echo $row['status']; ?></td>
                         <td><?php echo $row['amount_paid']; ?></td>
                         <td>
                             <button class="btn btn-warning btn-sm edit-order"
                                 data-id="<?php echo $row['id']; ?>"
-                                data-customer="<?php echo $row['customer_name']; ?>"
+                                data-customer="<?php echo $rowCustomer['customer_name']; ?>"
+                                data-contact="<?php echo $rowCustomer['customer_contact']; ?>"
+                                data-address="<?php echo $rowCustomer['customer_address']; ?>"
                                 data-date="<?php echo $row['order_date']; ?>"
                                 data-status="<?php echo $row['status']; ?>"
                                 data-amount="<?php echo $row['amount_paid']; ?>"
@@ -137,7 +173,7 @@ if (isset($_POST['delete_order'])) {
                                 data-bs-target="#editOrderModal">
                                 <i class="bi bi-pencil-square"></i> Edit
                             </button>
-                            
+
                             <form method="POST" style="display:inline;">
                                 <input type="hidden" name="order_id" value="<?php echo $row['id']; ?>">
                                 <button type="submit" name="delete_order" class="btn btn-danger btn-sm"
@@ -145,7 +181,48 @@ if (isset($_POST['delete_order'])) {
                                     <i class="bi bi-trash"></i> Delete
                                 </button>
                             </form>
+
+                            <?php if ($row['status'] !== 'Completed') { ?>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="order_id" value="<?php echo $row['id']; ?>">
+                                    <button type="submit" name="complete_order" class="btn btn-success btn-sm">
+                                        <i class="bi bi-check-circle"></i> Complete
+                                    </button>
+                                </form>
+                            <?php } ?>
                         </td>
+                    </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Completed Orders Table -->
+    <h4>Completed Orders</h4>
+    <div class="table-container">
+        <table id="completedOrdersTable" class="table table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Customer</th>
+                    <th>Contact</th>
+                    <th>Address</th>
+                    <th>Order Date</th>
+                    <th>Status</th>
+                    <th>Amount Paid</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php   while ($row = $completed_orders_result->fetch_assoc())
+                        while ($rowCustomer = $customer_result->fetch_assoc()) { ?>
+                    <tr>
+                        <td><?php echo $row['id']; ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_name']); ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_contact']); ?></td>
+                        <td><?php echo htmlspecialchars($rowCustomer['customer_address']); ?></td>
+                        <td><?php echo $row['order_date']; ?></td>
+                        <td><?php echo $row['status']; ?></td>
+                        <td><?php echo $row['amount_paid']; ?></td>
                     </tr>
                 <?php } ?>
             </tbody>
@@ -165,6 +242,12 @@ if (isset($_POST['delete_order'])) {
                 <form method="POST">
                     <!-- Customer Name -->
                     <input type="text" name="customer_name" placeholder="Customer Name" required class="form-control mb-2">
+
+                    <!-- Customer Contact -->
+                    <input type="text" name="customer_contact" placeholder="Customer Contact" required class="form-control mb-2">
+
+                    <!-- Customer Address -->
+                    <input type="text" name="customer_address" placeholder="Customer Address" required class="form-control mb-2">
 
                     <!-- Order Date -->
                     <input type="date" name="order_date" required class="form-control mb-2">
@@ -237,6 +320,8 @@ if (isset($_POST['delete_order'])) {
                 <form method="POST">
                     <input type="hidden" id="editOrderId" name="order_id">
                     <input type="text" id="editCustomerName" name="customer_name" placeholder="Customer Name" required class="form-control mb-2">
+                    <input type="text" id="editCustomerContact" name="customer_contact" placeholder="Customer Contact" required class="form-control mb-2">
+                    <input type="text" id="editCustomerAddress" name="customer_address" placeholder="Customer Address" required class="form-control mb-2">
                     <input type="date" id="editOrderDate" name="order_date" required class="form-control mb-2">
                     <select name="status" id="editStatus" required class="form-control mb-2">
                         <option value="Pending">Pending</option>
@@ -257,68 +342,82 @@ if (isset($_POST['delete_order'])) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     $(document).ready(function() {
-    // Function to calculate total amount
-    function calculateTotal() {
-        let total = 0;
-        $('.row').each(function() {
-            let quantity = $(this).find('.quantity').val();
-            let price = $(this).find('.price').val();
-            if (quantity && price) {
-                total += quantity * price;
-            }
+        // Initialize DataTables
+        $('#ongoingOrdersTable, #completedOrdersTable ').DataTable();
+
+        // Function to calculate total amount
+        function calculateTotal() {
+            let total = 0;
+            $('.row').each(function() {
+                let quantity = $(this).find('.quantity').val();
+                let price = $(this).find('.price').val();
+                if (quantity && price) {
+                    total += quantity * price;
+                }
+            });
+            $('#totalAmount').val(total.toFixed(2)); // Display total with 2 decimal places
+        }
+
+        // Add Product Field (Event Delegation)
+        $(document).on('click', '#addProductField', function() {
+            let newField = `
+                <div class="row mb-2">
+                    <div class="col">
+                        <select name="product_id[]" class="form-control product-select" required>
+                            <option value="">Select Product</option>
+                            <?php $products_result->data_seek(0); while ($product = $products_result->fetch_assoc()) { ?>
+                                <option value="<?php echo $product['id']; ?>" data-price="<?php echo $product['price']; ?>">
+                                    <?php echo htmlspecialchars($product['name']); ?> - $<?php echo $product['price']; ?>
+                                </option>
+                            <?php } ?>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <input type="number" name="quantity[]" placeholder="Quantity" class="form-control quantity" required>
+                    </div>
+                    <div class="col">
+                        <input type="number" name="price[]" placeholder="Price" class="form-control price" readonly>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger btn-sm removeProductField">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            $('#orderDetails').append(newField);
+            calculateTotal(); // Recalculate total after adding a product
         });
-        $('#totalAmount').val(total.toFixed(2)); // Display total with 2 decimal places
-    }
 
-    // Add Product Field (Event Delegation)
-    $(document).on('click', '#addProductField', function() {
-        let newField = `
-            <div class="row mb-2">
-                <div class="col">
-                    <select name="product_id[]" class="form-control product-select" required>
-                        <option value="">Select Product</option>
-                        <?php $products_result->data_seek(0); while ($product = $products_result->fetch_assoc()) { ?>
-                            <option value="<?php echo $product['id']; ?>" data-price="<?php echo $product['price']; ?>">
-                                <?php echo htmlspecialchars($product['name']); ?> - $<?php echo $product['price']; ?>
-                            </option>
-                        <?php } ?>
-                    </select>
-                </div>
-                <div class="col">
-                    <input type="number" name="quantity[]" placeholder="Quantity" class="form-control quantity" required>
-                </div>
-                <div class="col">
-                    <input type="number" name="price[]" placeholder="Price" class="form-control price" readonly>
-                </div>
-                <div class="col-auto">
-                    <button type="button" class="btn btn-danger btn-sm removeProductField">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-        $('#orderDetails').append(newField);
-        calculateTotal(); // Recalculate total after adding a product
-    });
+        // Remove Product Field (Event Delegation)
+        $(document).on('click', '.removeProductField', function() {
+            $(this).closest('.row').remove();
+            calculateTotal(); // Recalculate total after removing a product
+        });
 
-    // Remove Product Field (Event Delegation)
-    $(document).on('click', '.removeProductField', function() {
-        $(this).closest('.row').remove();
-        calculateTotal(); // Recalculate total after removing a product
-    });
+        // Update Price Field When Product is Selected (Event Delegation)
+        $(document).on('change', '.product-select', function() {
+            let price = $(this).find(':selected').data('price');
+            $(this).closest('.row').find('.price').val(price);
+            calculateTotal(); // Recalculate total after selecting a product
+        });
 
-    // Update Price Field When Product is Selected (Event Delegation)
-    $(document).on('change', '.product-select', function() {
-        let price = $(this).find(':selected').data('price');
-        $(this).closest('.row').find('.price').val(price);
-        calculateTotal(); // Recalculate total after selecting a product
-    });
+        // Recalculate Total When Quantity Changes (Event Delegation)
+        $(document).on('input', '.quantity', function() {
+            calculateTotal(); // Recalculate total when quantity changes
+        });
 
-    // Recalculate Total When Quantity Changes (Event Delegation)
-    $(document).on('input', '.quantity', function() {
-        calculateTotal(); // Recalculate total when quantity changes
+        // Populate Edit Modal with Data
+        $(document).on('click', '.edit-order', function() {
+            $('#editOrderId').val($(this).data('id'));
+            $('#editCustomerName').val($(this).data('customer'));
+            $('#editCustomerContact').val($(this).data('contact'));
+            $('#editCustomerAddress').val($(this).data('address'));
+            $('#editOrderDate').val($(this).data('date'));
+            $('#editStatus').val($(this).data('status'));
+            $('#editAmountPaid').val($(this).data('amount'));
+        });
     });
-});
 </script>
 
 </body>

@@ -1,3 +1,11 @@
+INSERT INTO `users` (`id`, `username`, `password`, `first_name`, `last_name`, `created_at`, `last_login`, `is_active`) VALUES
+(1, '1', '$2y$10$GU4XID0nn7H6BZG3h.VN1.CcATqbt2E3jbjzRAGfDZJqfiozP5VOG', 'Gilgre Gene', 'Mantilla', '2025-03-12 05:08:45', '2025-03-12 05:09:24', 1),
+(2, '2', '$2y$10$rrdKGVVa4whPV7s.FwcQR.EXr9DtUtdl02iyIifM0.c4dGX/LNRT6', 'Jan Angel', 'Ayala', '2025-03-12 05:08:54', '2025-03-12 05:08:54', 1),
+(3, '3', '$2y$10$DiVXUS22RBhIWw/zCU4rzuKaCM461rje8LVJckyfyCnqUiS3drQZO', 'Josh Andrei', 'Magcalas', '2025-03-12 05:09:03', '2025-03-12 05:09:03', 1),
+(4, '4', '$2y$10$55IjM6V5sFbOt8cj4KHlzeDTaNkfN2ELK.caqQ4mowC1BpQ6PW/.W', 'Jhon Jan Raven', 'Canedo', '2025-03-12 05:09:10', '2025-03-12 05:09:10', 1),
+(5, '5', '$2y$10$.5UrWmZiYaoMaGst29W6yOBEukUsjHNrZvo5YmSRI2dE7W0Aff.lW', 'Earl', 'Fructose', '2025-03-12 05:09:21', '2025-03-12 05:09:21', 1);
+
+
 INSERT INTO suppliers (supplier_name, supplier_info, address, created_by) VALUES
 ('MetalWorks Inc.', 'Supplier of high-quality metals', '123 Metal St, Industry City', 1),
 ('WoodCraft Ltd.', 'Supplier of premium wood materials', '456 Timber Ave, Forest Town', 2),
@@ -51,71 +59,3 @@ INSERT INTO inventory (product_id, quantity, created_by) VALUES
 (11, 40, 1),
 (12, 300, 2),
 (13, 15, 3);
-
-INSERT INTO customer (customer_name, customer_contact, customer_address, created_by) VALUES
-('Alice Johnson', 'alice@example.com', '123 Main St, Springfield', 1),
-('Bob Williams', 'bob@example.com', '456 Elm St, Shelbyville', 2),
-('Charlie Brown', 'charlie@example.com', '789 Oak St, Capital City', 3),
-('Diana Evans', 'diana@example.com', '101 Pine St, Greenwood', 4),
-('Edward Harris', 'edward@example.com', '202 Maple St, Riverside', 5),
-('Fiona Lewis', 'fiona@example.com', '303 Birch St, Lakeside', 1),
-('George King', 'george@example.com', '404 Cedar St, Hilltop', 2),
-('Hannah Scott', 'hannah@example.com', '505 Walnut St, Meadowview', 3),
-('Ian Taylor', 'ian@example.com', '606 Cherry St, Brookside', 4),
-('Julia White', 'julia@example.com', '707 Spruce St, Sunset Valley', 5),
-('Kevin Baker', 'kevin@example.com', '808 Fir St, Mountainview', 1),
-('Linda Clark', 'linda@example.com', '909 Poplar St, Oceanview', 2),
-('Michael Adams', 'michael@example.com', '1010 Willow St, Hillcrest', 3),
-('Nancy Davis', 'nancy@example.com', '1111 Ash St, Lakeshore', 4),
-('Oliver Evans', 'oliver@example.com', '1212 Elm St, Riverside', 5);
-
-INSERT INTO orders (customer_id, order_date, status) VALUES
-(1, '2023-10-01', 1),
-(2, '2023-10-02', 0),
-(3, '2023-10-03', 1),
-(4, '2023-10-04', 0),
-(5, '2023-10-05', 1),
-(6, '2023-10-06', 0),
-(7, '2023-10-07', 1),
-(8, '2023-10-08', 0),
-(9, '2023-10-09', 1),
-(10, '2023-10-10', 0),
-(11, '2023-10-11', 1),
-(12, '2023-10-12', 0),
-(13, '2023-10-13', 1),
-(14, '2023-10-14', 0),
-(15, '2023-10-15', 1);
-
-INSERT INTO order_details (order_id, product_id, quantity, unique_price) VALUES
-(1, 1, 2, 25.99),
-(1, 2, 1, 120.50),
-(2, 3, 10, 5.99),
-(3, 4, 5, 15.99),
-(4, 5, 1, 250.00),
-(5, 6, 3, 12.99),
-(6, 7, 1, 200.00),
-(7, 8, 2, 180.00),
-(8, 9, 10, 8.99),
-(9, 10, 5, 10.50),
-(10, 11, 2, 45.00),
-(11, 12, 20, 7.99),
-(12, 13, 1, 35.00),
-(13, 14, 3, 90.00),
-(14, 15, 5, 22.99);
-
-INSERT INTO invoice (user_id, invoice_date, customer_id, order_details_id, delivery_date, tin, total) VALUES
-(1, '2023-10-01', 1, 1, '2023-10-05', '123456789', 172.48),
-(2, '2023-10-02', 2, 2, '2023-10-06', '987654321', 59.90),
-(3, '2023-10-03', 3, 3, '2023-10-07', '456789123', 129.95),
-(4, '2023-10-04', 4, 4, '2023-10-08', '321654987', 79.95),
-(5, '2023-10-05', 5, 5, '2023-10-09', '654321987', 250.00),
-(1, '2023-10-06', 6, 6, '2023-10-10', '789123456', 38.97),
-(2, '2023-10-07', 7, 7, '2023-10-11', '987321654', 200.00),
-(3, '2023-10-08', 8, 8, '2023-10-12', '123987654', 360.00),
-(4, '2023-10-09', 9, 9, '2023-10-13', '456321789', 89.90),
-(5, '2023-10-10', 10, 10, '2023-10-14', '654987321', 52.50),
-(1, '2023-10-11', 11, 11, '2023-10-15', '321789654', 90.00),
-(2, '2023-10-12', 12, 12, '2023-10-16', '789654321', 159.80),
-(3, '2023-10-13', 13, 13, '2023-10-17', '987123654', 35.00),
-(4, '2023-10-14', 14, 14, '2023-10-18', '654123987', 270.00),
-(5, '2023-10-15', 15, 15, '2023-10-19', '321987654', 114.95);
