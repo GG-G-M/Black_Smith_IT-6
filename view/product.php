@@ -311,7 +311,7 @@ if (isset($_POST['activate_product'])) {
                         <td><?php echo $row['description']; ?></td>
                         <td><?php echo $row['category']; ?></td>
                         <td><?php echo $row['price']; ?></td>
-                        <td><?php echo $row['material_type']; ?></td>
+                        <td><?php echo $row['materials']; ?></td>
                         <td>
                             <!-- Activate Button -->
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to activate this product?');">
