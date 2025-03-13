@@ -1,7 +1,7 @@
 
--- DROP DATABASE IF EXISTS inventory_system;
+DROP DATABASE IF EXISTS inventory_system;
 
--- ✅10 out of 12 Completed✅
+-- ✅10 out of 13 Completed✅
 
 -- Create the database
 CREATE DATABASE IF NOT EXISTS inventory_system;
@@ -59,15 +59,23 @@ CREATE TABLE products (
     description VARCHAR(255),
     category ENUM('Tools', 'Accessories', 'Other') NOT NULL,
     price DECIMAL(10,2) NOT NULL,
-    material_id INT NOT NULL,
     created_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by INT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
-    FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Product Materials Table (Junction Table) ✅
+CREATE TABLE product_materials (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    material_id INT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE,
+    CONSTRAINT unique_product_material UNIQUE (product_id, material_id)
 );
 
 -- Inventory Table ✅
@@ -187,3 +195,5 @@ CREATE TABLE returns (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
+
+

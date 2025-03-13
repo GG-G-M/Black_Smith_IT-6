@@ -5,6 +5,28 @@ include '../Handler/db.php';
 
 $full_name = $_SESSION['full_name']; 
 
+// Handle Fetch Materials Request
+if (isset($_POST['fetch_materials'])) {
+    $product_id = $_POST['product_id'];
+
+    $sql = "SELECT m.id, m.material_type 
+            FROM materials m
+            JOIN product_materials pm ON m.id = pm.material_id
+            WHERE pm.product_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $product_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $materials = [];
+    while ($row = $result->fetch_assoc()) {
+        $materials[] = $row;
+    }
+
+    echo json_encode($materials);
+    exit;
+}
+
 // Fetch active products with their materials
 $active_product_sql = "SELECT p.id, p.name, p.description, p.category, p.price, 
                               GROUP_CONCAT(m.material_type SEPARATOR ', ') AS materials,
@@ -20,14 +42,17 @@ $active_product_sql = "SELECT p.id, p.name, p.description, p.category, p.price,
 $active_product_result = $conn->query($active_product_sql);
 
 // Fetch inactive products
-$inactive_product_sql = "SELECT products.id, products.name, products.description, products.category, products.price, 
-                                materials.material_type, creator.last_name AS created_by, updater.last_name AS updated_by,
-                                products.created_at, products.updated_at
-                         FROM products
-                         JOIN materials ON products.material_id = materials.id
-                         LEFT JOIN users AS creator ON products.created_by = creator.id
-                         LEFT JOIN users AS updater ON products.updated_by = updater.id
-                         WHERE products.is_active = 0";
+$inactive_product_sql = "SELECT p.id, p.name, p.description, p.category, p.price, 
+                                GROUP_CONCAT(m.material_type SEPARATOR ', ') AS materials,
+                                creator.last_name AS created_by, updater.last_name AS updated_by,
+                                p.created_at, p.updated_at
+                         FROM products p
+                         LEFT JOIN product_materials pm ON p.id = pm.product_id
+                         LEFT JOIN materials m ON pm.material_id = m.id
+                         LEFT JOIN users AS creator ON p.created_by = creator.id
+                         LEFT JOIN users AS updater ON p.updated_by = updater.id
+                         WHERE p.is_active = 0
+                         GROUP BY p.id";
 $inactive_product_result = $conn->query($inactive_product_sql);
 
 // Fetch materials for the dropdown
@@ -40,7 +65,7 @@ if (isset($_POST['add_product'])) {
     $description = $_POST['description'];
     $category = $_POST['category'];
     $price = $_POST['price'];
-    $material_ids = $_POST['material_id']; 
+    $material_ids = $_POST['material_id']; // This should be an array
     $created_by = $_SESSION['user_id']; 
 
     // Validate inputs
@@ -88,16 +113,40 @@ if (isset($_POST['edit_product'])) {
     $description = $_POST['description'];
     $category = $_POST['category'];
     $price = $_POST['price'];
-    $material_id = $_POST['material_id'];
+    $material_ids = $_POST['material_id'];
     $updated_by = $_SESSION['user_id'];
 
-    // Update the database
-    $update_sql = "UPDATE products SET name = ?, description = ?, category = ?, price = ?, material_id = ?, updated_by = ? WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("sssdiii", $name, $description, $category, $price, $material_id, $updated_by, $product_id);
-    $update_stmt->execute();
+    // Start a transaction
+    $conn->begin_transaction();
 
-    // Redirect to refresh the page
+    try {
+        // Update the product
+        $stmt = $conn->prepare("UPDATE products SET name = ?, description = ?, category = ?, price = ?, updated_by = ? WHERE id = ?");
+        $stmt->bind_param("sssdii", $name, $description, $category, $price, $updated_by, $product_id);
+        $stmt->execute();
+
+        // Delete existing materials for the product
+        $stmt = $conn->prepare("DELETE FROM product_materials WHERE product_id = ?");
+        $stmt->bind_param("i", $product_id);
+        $stmt->execute();
+
+        // Insert new materials into product_materials table
+        foreach ($material_ids as $material_id) {
+            $stmt = $conn->prepare("INSERT INTO product_materials (product_id, material_id) VALUES (?, ?)");
+            $stmt->bind_param("ii", $product_id, $material_id);
+            $stmt->execute();
+        }
+
+        // Commit the transaction
+        $conn->commit();
+
+        $_SESSION['success'] = "Product updated successfully.";
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+    }
+
     header("Location: " . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -402,7 +451,6 @@ if (isset($_POST['activate_product'])) {
                     <div class="mb-3">
                         <label class="form-label">Materials</label>
                         <div id="materialFields">
-                            <!-- Dynamic fields for materials will be added here -->
                             <div class="row mb-2">
                                 <div class="col">
                                     <select name="material_id[]" class="form-control" required>
@@ -411,9 +459,6 @@ if (isset($_POST['activate_product'])) {
                                             <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
                                         <?php } ?>
                                     </select>
-                                </div>
-                                <div class="col">
-                                    <input type="number" name="material_quantity[]" placeholder="Quantity" class="form-control" required>
                                 </div>
                                 <div class="col-auto">
                                     <button type="button" class="btn btn-danger btn-sm removeMaterialField" disabled>
@@ -464,7 +509,6 @@ if (isset($_POST['activate_product'])) {
                     <div class="mb-3">
                         <label class="form-label">Category</label>
                         <select name="category" id="editProductCategory" class="form-control" required>
-                            <option value="Furniture">Furniture</option>
                             <option value="Tools">Tools</option>
                             <option value="Accessories">Accessories</option>
                             <option value="Other">Other</option>
@@ -477,17 +521,15 @@ if (isset($_POST['activate_product'])) {
                         <input type="number" name="price" id="editProductPrice" class="form-control" step="0.01" required>
                     </div>
 
-                    <!-- Material Select -->
+                    <!-- Materials Section -->
                     <div class="mb-3">
-                        <label class="form-label">Material</label>
-                        <select name="material_id" id="editProductMaterialId" class="form-control" required>
-                            <option value="">Select Material</option>
-                            <?php
-                            $material_result->data_seek(0); // Reset pointer to the beginning
-                            while ($material = $material_result->fetch_assoc()) { ?>
-                                <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
-                            <?php } ?>
-                        </select>
+                        <label class="form-label">Materials</label>
+                        <div id="editMaterialFields">
+                            <!-- Dynamic fields for materials will be added here -->
+                        </div>
+                        <button type="button" id="addEditMaterialField" class="btn btn-secondary btn-sm">
+                            <i class="bi bi-plus"></i>&nbsp;Add Material
+                        </button>
                     </div>
 
                     <!-- Submit Button -->
@@ -531,11 +573,106 @@ if (isset($_POST['activate_product'])) {
 <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 <script>
     $(document).ready(function() {
-        // Initialize DataTable
-        $('#productsTable').DataTable();
+    // Initialize DataTable
+    $('#productsTable').DataTable();
 
-        // Add Material Field
-        $("#addMaterialField").click(function() {
+    // Add Material Field
+    $("#addMaterialField").click(function() {
+        let newField = `
+            <div class="row mb-2">
+                <div class="col">
+                    <select name="material_id[]" class="form-control" required>
+                        <option value="">Select Material</option>
+                        <?php
+                        $material_result->data_seek(0); // Reset pointer to the beginning
+                        while ($material = $material_result->fetch_assoc()) { ?>
+                            <option value="<?php echo $material['id']; ?>"><?php echo $material['material_type']; ?></option>
+                        <?php } ?>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        $("#materialFields").append(newField);
+    });
+
+    // Remove Material Field
+    $(document).on("click", ".removeMaterialField", function() {
+        $(this).closest(".row").remove();
+    });
+
+    // Handle Edit Button Click
+    $(document).on("click", ".edit_product-btn", function() {
+        let productId = $(this).data("id");
+        let productName = $(this).data("name");
+        let productDescription = $(this).data("description");
+        let productCategory = $(this).data("category");
+        let productPrice = $(this).data("price");
+
+        // Populate the Edit Modal
+        $("#editProductId").val(productId);
+        $("#editProductName").val(productName);
+        $("#editProductDescription").val(productDescription);
+        $("#editProductCategory").val(productCategory);
+        $("#editProductPrice").val(productPrice);
+
+    // Fetch materials for the product
+    $.ajax({
+        url: "<?php echo $_SERVER['PHP_SELF']; ?>",
+        type: 'POST',
+        data: { fetch_materials: true, product_id: productId },
+        success: function(response) {
+            let materials = JSON.parse(response);
+            let materialFields = '';
+
+    // Fetch all materials from PHP and store them in a JavaScript variable
+        let allMaterials = [
+            <?php
+            $material_result->data_seek(0); // Reset pointer to the beginning
+            while ($material = $material_result->fetch_assoc()) {
+                echo "{ id: " . $material['id'] . ", material_type: '" . $material['material_type'] . "' },";
+            }
+            ?>
+        ];
+
+    // Loop through the materials associated with the product
+        materials.forEach(material => {
+            materialFields += `
+                <div class="row mb-2">
+                    <div class="col">
+                        <select name="material_id[]" class="form-control" required>
+                            <option value="">Select Material</option>
+                            ${allMaterials.map(m => `
+                                <option value="${m.id}" ${material.id == m.id ? 'selected' : ''}>
+                                    ${m.material_type}
+                                </option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger btn-sm removeMaterialField">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Append the material fields to the modal
+        $("#editMaterialFields").html(materialFields);
+    }
+});
+
+    // Show the Edit Modal
+    $("#editProductModal").modal("show");
+        });
+
+    // Add Material Field in Edit Modal
+        $("#addEditMaterialField").click(function() {
             let newField = `
                 <div class="row mb-2">
                     <div class="col">
@@ -548,9 +685,6 @@ if (isset($_POST['activate_product'])) {
                             <?php } ?>
                         </select>
                     </div>
-                    <div class="col">
-                        <input type="number" name="material_quantity[]" placeholder="Quantity" class="form-control" required>
-                    </div>
                     <div class="col-auto">
                         <button type="button" class="btn btn-danger btn-sm removeMaterialField">
                             <i class="bi bi-trash"></i>
@@ -558,37 +692,16 @@ if (isset($_POST['activate_product'])) {
                     </div>
                 </div>
             `;
-            $("#materialFields").append(newField);
+            $("#editMaterialFields").append(newField);
         });
 
-        // Remove Material Field
+    // Remove Material Field in Edit Modal
         $(document).on("click", ".removeMaterialField", function() {
             $(this).closest(".row").remove();
         });
 
-        // Handle Edit Button Click
-        $(document).on("click", ".edit_product-btn", function() {
-            let productId = $(this).data("id");
-            let productName = $(this).data("name");
-            let productDescription = $(this).data("description");
-            let productCategory = $(this).data("category");
-            let productPrice = $(this).data("price");
-            let productMaterialId = $(this).data("material_id");
-
-            // Populate the Edit Modal
-            $("#editProductId").val(productId);
-            $("#editProductName").val(productName);
-            $("#editProductDescription").val(productDescription);
-            $("#editProductCategory").val(productCategory);
-            $("#editProductPrice").val(productPrice);
-            $("#editProductMaterialId").val(productMaterialId);
-
-            // Show the Edit Modal
-            $("#editProductModal").modal("show");
-        });
-
-         // Handle Info Button Click
-         $(document).on("click", ".info_product-btn", function() {
+    // Handle Info Button Click
+        $(document).on("click", ".info_product-btn", function() {
             let productId = $(this).data("id");
             let productName = $(this).data("name");
             let productDescription = $(this).data("description");
