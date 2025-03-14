@@ -104,44 +104,6 @@ $invoice_result = $conn->query($invoice_sql);
 <div class="content">
     <h3 class="text-primary">Sales/Invoice - Hello <?php echo htmlspecialchars($full_name); ?></h3>
 
-    <!-- Add Invoice Button -->
-    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#addInvoiceModal">
-        <i class="bi bi-plus-circle-fill"></i> Add Invoice
-    </button>
-
-    <!-- Completed Orders Table -->
-    <h4>Completed Orders</h4>
-    <table id="completedOrdersTable" class="table table-hover">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Order Date</th>
-                <th>Customer</th>
-                <th>Amount Paid</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php while ($row = $completed_orders_result->fetch_assoc()) { ?>
-                <tr>
-                    <td><?php echo $row['id']; ?></td>
-                    <td><?php echo $row['order_date']; ?></td>
-                    <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
-                    <td><?php echo $row['amount_paid']; ?></td>
-                    <td>
-                        <!-- Create Invoice Button -->
-                        <button class="btn btn-primary btn-sm create-invoice"
-                            data-id="<?php echo $row['id']; ?>"
-                            data-bs-toggle="modal"
-                            data-bs-target="#createInvoiceModal">
-                            <i class="bi bi-file-earmark-plus"></i> Create Invoice
-                        </button>
-                    </td>
-                </tr>
-            <?php } ?>
-        </tbody>
-    </table>
-
     <!-- Invoices Table -->
     <h4>Invoices</h4>
     <table id="invoicesTable" class="table table-hover">
@@ -195,31 +157,6 @@ $invoice_result = $conn->query($invoice_sql);
             <?php } ?>
         </tbody>
     </table>
-</div>
-
-<!-- Create Invoice Modal -->
-<div class="modal fade" id="createInvoiceModal" tabindex="-1" aria-labelledby="createInvoiceModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createInvoiceModalLabel">Create Invoice from Order</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" id="createOrderId" name="order_id">
-                    <!-- Invoice Date -->
-                    <input type="date" name="invoice_date" required class="form-control mb-2">
-
-                    <!-- Delivery Date -->
-                    <input type="date" name="delivery_date" required class="form-control mb-2">
-
-                    <!-- Submit Button -->
-                    <button type="submit" name="add_invoice_from_order" class="btn btn-primary">Create Invoice</button>
-                </form>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- View Invoice Modal -->

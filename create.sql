@@ -109,14 +109,16 @@ CREATE TABLE customer (
 -- Orders Table ✅
 CREATE TABLE orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_id INT, -- No not null cause error cause order table and customer is made together at the same time
-    order_date DATE NOT NULL,
-    status ENUM('Pending', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Pending', -- Order status
-    amount_paid DECIMAL(10,2) DEFAULT 0, -- Amount paid by the customer
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    customer_id INT, 
+    order_date DATE NOT NULL DEFAULT CURRENT_DATE, 
+    delivery_date DATE NOT NULL DEFAULT CURRENT_DATE, 
+    status ENUM('Pending', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Pending',
+    amount_paid DECIMAL(10,2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE
 );
+
 
 -- Order Details Table ✅
 CREATE TABLE order_details (
@@ -139,19 +141,28 @@ CREATE TABLE order_log (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Invoice Table (Sales)
+-- Invoice Table (Sales) main invoice details, customer and total amount. ✅
 CREATE TABLE invoice (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    invoice_date DATE NOT NULL,
-    customer_id INT NOT NULL,
-    order_details_id INT NOT NULL,
-    delivery_date DATE NOT NULL,
-    tin VARCHAR(50),
-    total DECIMAL(10,2) NOT NULL,
+    user_id INT NOT NULL, -- User who created the invoice
+    invoice_date DATE NOT NULL, -- Date of the invoice
+    customer_id INT NOT NULL, -- Customer details (SOLD TO, Address)
+    delivery_date DATE NOT NULL, -- Delivery date
+    total_amount DECIMAL(10,2) NOT NULL, -- Total amount of the invoice
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE,
-    FOREIGN KEY (order_details_id) REFERENCES order_details(id) ON DELETE CASCADE
+    FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE
+);
+
+--individual items (products) in the invoice ✅
+CREATE TABLE invoice_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    invoice_id INT NOT NULL, -- Link to the invoice
+    product_id INT NOT NULL, -- Product details
+    quantity INT NOT NULL, -- Quantity of the product
+    unit_price DECIMAL(10,2) NOT NULL, -- Unit price of the product
+    amount DECIMAL(10,2) NOT NULL, -- Calculated as quantity * unit_price
+    FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
 -- Stock Transactions (Purchases) ✅
@@ -195,5 +206,3 @@ CREATE TABLE returns (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
-
-
