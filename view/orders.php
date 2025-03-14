@@ -12,88 +12,54 @@ $customer_result = $conn->query($customer_sql);
 
 // Fetch ongoing orders with customer details
 $ongoing_orders_sql = "
-    SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, c.customer_name, c.customer_contact, c.customer_address 
+    SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, 
+           c.customer_name, c.customer_contact, c.customer_address, 
+           COALESCE(SUM(od.quantity * od.unique_price), 0) AS amount_total
     FROM orders o
     JOIN customer c ON o.customer_id = c.id
-    WHERE o.status IN ('Pending', 'Cancelled')
+    LEFT JOIN order_details od ON o.id = od.order_id
+    WHERE o.status IN ('Pending')
+    GROUP BY o.id
 ";
 $ongoing_orders_result = $conn->query($ongoing_orders_sql);
 
 // Fetch completed orders with customer details
 $completed_orders_sql = "
-    SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, c.customer_name, c.customer_contact, c.customer_address 
+    SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, 
+           c.customer_name, c.customer_contact, c.customer_address, 
+           COALESCE(SUM(od.quantity * od.unique_price), 0) AS amount_total
     FROM orders o
     JOIN customer c ON o.customer_id = c.id
-    WHERE o.status = 'Completed'
+    LEFT JOIN order_details od ON o.id = od.order_id
+    WHERE o.status IN ('Completed')
+    GROUP BY o.id
 ";
 $completed_orders_result = $conn->query($completed_orders_sql);
+
+// Fetch completed orders with customer details
+$cancelled_orders_sql = "
+    SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, 
+           c.customer_name, c.customer_contact, c.customer_address, 
+           COALESCE(SUM(od.quantity * od.unique_price), 0) AS amount_total
+    FROM orders o
+    JOIN customer c ON o.customer_id = c.id
+    LEFT JOIN order_details od ON o.id = od.order_id
+    WHERE o.status IN ('Cancelled')
+    GROUP BY o.id
+";
+$cancelled_orders_result = $conn->query($cancelled_orders_sql);
 
 // Fetch products for order details
 $products_sql = "SELECT id, name, price FROM products";
 $products_result = $conn->query($products_sql);
-
-// Handle Fetch Order Details Request
-if (isset($_POST['fetch_order_details'])) {
-    $order_id = $_POST['order_id'];
-
-    // Fetch order details
-    $order_sql = "
-        SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, c.customer_name, c.customer_contact, c.customer_address 
-        FROM orders o
-        JOIN customer c ON o.customer_id = c.id
-        WHERE o.id = ?
-    ";
-    $stmt = $conn->prepare($order_sql);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $order_result = $stmt->get_result();
-    $order = $order_result->fetch_assoc();
-
-    if (!$order) {
-        // If no order is found, return an error
-        header('Content-Type: application/json');
-        echo json_encode(['error' => 'Order not found']);
-        exit;
-    }
-
-    // Fetch order products
-    $products_sql = "
-        SELECT p.name AS product_name, od.quantity, od.unique_price
-        FROM order_details od
-        JOIN products p ON od.product_id = p.id
-        WHERE od.order_id = ?
-    ";
-    $stmt = $conn->prepare($products_sql);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $products_result = $stmt->get_result();
-    $products = $products_result->fetch_all(MYSQLI_ASSOC);
-
-    // Combine order and product data
-    $response = [
-        'id' => $order['id'],
-        'customer_name' => $order['customer_name'],
-        'customer_contact' => $order['customer_contact'],
-        'customer_address' => $order['customer_address'],
-        'order_date' => $order['order_date'],
-        'status' => $order['status'],
-        'amount_paid' => $order['amount_paid'],
-        'products' => $products
-    ];
-
-    // Return JSON response
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
-}
 
 // Handle Add Order
 if (isset($_POST['add_order'])) {
     $customer_name = $_POST['customer_name'];
     $customer_contact = $_POST['customer_contact'];
     $customer_address = $_POST['customer_address'];
-    $order_date = date('Y-m-d'); // Current date for order_date
-    $delivery_date = $_POST['delivery_date']; // Keep the original name for delivery_date
+    $order_date = $_POST['order_date'];
+    $delivery_date = $_POST['delivery_date']; // Get the delivery date from form input
     $status = $_POST['status'];
     $amount_paid = $_POST['amount_paid'];
 
@@ -104,8 +70,8 @@ if (isset($_POST['add_order'])) {
     $customer_id = $conn->insert_id; // Get the ID of the newly inserted customer
 
     // Insert the order
-    $stmt = $conn->prepare("INSERT INTO orders (customer_id, status, amount_paid, order_date, delivery_date) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("isdss", $customer_id, $status, $amount_paid, $order_date, $delivery_date);    
+    $stmt = $conn->prepare("INSERT INTO orders (customer_id, status, amount_paid, delivery_date) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isds", $customer_id, $status, $amount_paid, $delivery_date);    
     $stmt->execute();
     $order_id = $conn->insert_id; // Get the ID of the newly inserted order
 
@@ -135,7 +101,7 @@ if (isset($_POST['edit_order'])) {
     $customer_name = $_POST['customer_name'];
     $customer_contact = $_POST['customer_contact'];
     $customer_address = $_POST['customer_address'];
-    $delivery_date = $_POST['delivery_date'];
+    $order_date = $_POST['order_date'];
     $status = $_POST['status'];
     $amount_paid = $_POST['amount_paid'];
 
@@ -144,9 +110,9 @@ if (isset($_POST['edit_order'])) {
     $stmt->bind_param("sssi", $customer_name, $customer_contact, $customer_address, $order_id);
     $stmt->execute();
 
-    // Update the order with delivery_date instead of order_date
-    $stmt = $conn->prepare("UPDATE orders SET delivery_date = ?, status = ?, amount_paid = ? WHERE id = ?");
-    $stmt->bind_param("ssdi", $delivery_date, $status, $amount_paid, $order_id);
+    // Update the order
+    $stmt = $conn->prepare("UPDATE orders SET order_date = ?, status = ?, amount_paid = ? WHERE id = ?");
+    $stmt->bind_param("ssdi", $order_date, $status, $amount_paid, $order_id);
     $stmt->execute();
 
     $_SESSION['success'] = "Order updated successfully.";
@@ -158,64 +124,131 @@ if (isset($_POST['edit_order'])) {
 if (isset($_POST['complete_order'])) {
     $order_id = $_POST['order_id'];
 
-    // Update order status to 'Completed'
-    $stmt = $conn->prepare("UPDATE orders SET status = 'Completed' WHERE id = ?");
-    if (!$stmt) {
-        die("Error in prepare statement: " . $conn->error);
-    }
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $stmt->close();
+    // Start transaction
+    $conn->begin_transaction();
 
-    // Get order information for invoice
-    $query = "SELECT o.customer_id, o.amount_paid 
-              FROM orders o 
-              WHERE o.id = ?";
-    $stmt = $conn->prepare($query);
-    if (!$stmt) {
-        die("Error in prepare statement: " . $conn->error);
-    }
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $order = $result->fetch_assoc();
-    $stmt->close();
-    
-    if ($order) {
-        // Get current user ID from session
-        $user_id = $_SESSION['user_id']; // Make sure this exists in your session
-        
-        // Today's date for invoice_date
-        $today = date('Y-m-d');
-        
-        // Debug output - print the actual SQL statement
-        $debug_sql = "INSERT INTO invoice (user_id, invoice_date, customer_id, delivery_date, total_amount) 
-                      VALUES ($user_id, '$today', {$order['customer_id']}, '$today', {$order['amount_paid']})";
-        
-        // Insert into invoice - using the correct column name total_amount from your schema
-        $stmt = $conn->prepare("INSERT INTO invoice (user_id, invoice_date, customer_id, delivery_date, total_amount) 
-                              VALUES (?, ?, ?, ?, ?)");
-        
-        // Check if preparation succeeded
+    try {
+        // Update order status to 'Completed'
+        $stmt = $conn->prepare("UPDATE orders SET status = 'Completed' WHERE id = ?");
         if (!$stmt) {
-            die("Error in prepare statement: " . $conn->error . "<br>Attempted SQL: " . $debug_sql);
+            throw new Exception("Prepare failed (Update Orders): " . $conn->error);
         }
-        
-        $stmt->bind_param("isiss", $user_id, $today, $order['customer_id'], $today, $order['amount_paid']);
-        $result = $stmt->execute();
-        
-        if (!$result) {
-            $_SESSION['error'] = "Failed to create invoice: " . $stmt->error;
-        } else {
-            $_SESSION['success'] = "Order completed and invoice created successfully.";
-        }
+        $stmt->bind_param("i", $order_id);
+        $stmt->execute();
         $stmt->close();
-    } else {
-        $_SESSION['error'] = "Failed to generate invoice. Order not found.";
+
+        // Fetch order details for invoice
+        $stmt = $conn->prepare("
+            SELECT o.customer_id, o.amount_paid, o.delivery_date 
+            FROM orders o 
+            WHERE o.id = ?
+        ");
+        if (!$stmt) {
+            throw new Exception("Prepare failed (Fetch Order): " . $conn->error);
+        }
+        $stmt->bind_param("i", $order_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $order = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$order) {
+            throw new Exception("Order not found.");
+        }
+
+        // Insert into invoice table
+        $stmt = $conn->prepare("
+            INSERT INTO invoice (user_id, invoice_date, customer_id, delivery_date, total_amount) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        if (!$stmt) {
+            throw new Exception("Prepare failed (Insert Invoice): " . $conn->error);
+        }
+        $user_id = $_SESSION['user_id']; // Get logged-in user ID
+        $today = date('Y-m-d'); // Today's date
+        $stmt->bind_param("isisd", $user_id, $today, $order['customer_id'], $order['delivery_date'], $order['amount_paid']);
+        $stmt->execute();
+        $invoice_id = $conn->insert_id; // Get the newly created invoice ID
+        $stmt->close();
+
+        // Fetch order details to transfer to invoice_items
+        $stmt = $conn->prepare("
+            SELECT product_id, quantity, unique_price 
+            FROM order_details 
+            WHERE order_id = ?
+        ");
+        if (!$stmt) {
+            throw new Exception("Prepare failed (Fetch Order Details): " . $conn->error);
+        }
+        $stmt->bind_param("i", $order_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        // Insert order details into invoice_items
+        while ($product = $result->fetch_assoc()) {
+            $amount = $product['quantity'] * $product['unique_price'];
+            $stmt2 = $conn->prepare("
+                INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, amount) 
+                VALUES (?, ?, ?, ?, ?)
+            ");
+            if (!$stmt2) {
+                throw new Exception("Prepare failed (Insert Invoice Items): " . $conn->error);
+            }
+            $stmt2->bind_param("iiidd", $invoice_id, $product['product_id'], $product['quantity'], $product['unique_price'], $amount);
+            $stmt2->execute();
+            $stmt2->close();
+        }
+
+        $stmt->close();
+        $conn->commit(); // Commit transaction
+        $_SESSION['success'] = "Order completed and invoice created successfully.";
+    } catch (Exception $e) {
+        $conn->rollback(); // Rollback transaction if an error occurs
+        $_SESSION['error'] = "Error: " . $e->getMessage();
     }
-    
+
     header("Location: orders.php");
     exit;
+}
+
+// Fetch order details and products for View Order skibidity
+if (isset($_GET['view_order_id'])) {
+    $order_id = $_GET['view_order_id'];
+
+    // Fetch order details
+    $order_sql = "
+        SELECT o.id, o.order_date, o.delivery_date, o.status, o.amount_paid, c.customer_name, c.customer_contact, c.customer_address 
+        FROM orders o
+        JOIN customer c ON o.customer_id = c.id
+        WHERE o.id = ?
+    ";
+    $stmt = $conn->prepare($order_sql);
+    $stmt->bind_param("i", $order_id);
+    $stmt->execute();
+    $order_result = $stmt->get_result();
+    $order = $order_result->fetch_assoc();
+
+    // Fetch order products
+    $products_sql = "
+        SELECT p.name AS product_name, od.quantity, od.unique_price
+        FROM order_details od
+        JOIN products p ON od.product_id = p.id
+        WHERE od.order_id = ?
+    ";
+    $stmt = $conn->prepare($products_sql);
+    $stmt->bind_param("i", $order_id);
+    $stmt->execute();
+    $products_result = $stmt->get_result();
+    $products = $products_result->fetch_all(MYSQLI_ASSOC);
+
+    // Calculate the total amount for all products
+    $total_amount = 0;
+    foreach ($products as $product) {
+        $total_amount += $product['quantity'] * $product['unique_price'];
+    }
+
+    // Calculate the balance left
+    $balance_left = $total_amount - $order['amount_paid'];
 }
 
 ?>
@@ -258,12 +291,15 @@ if (isset($_POST['complete_order'])) {
                 <th>Order Date</th>
                 <th>Delivery Date</th>
                 <th>Status</th>
+                <th>Amount Total</th>
                 <th>Amount Paid</th>
+                <th>Balance</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             <?php while ($row = $ongoing_orders_result->fetch_assoc()) { ?>
+                
                 <tr>
                     <td><?php echo $row['id']; ?></td>
                     <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
@@ -272,7 +308,9 @@ if (isset($_POST['complete_order'])) {
                     <td><?php echo $row['order_date']; ?></td>
                     <td><?php echo $row['delivery_date']; ?></td>
                     <td><?php echo $row['status']; ?></td>
+                    <td><?php echo $row['amount_total']; ?></td>
                     <td><?php echo $row['amount_paid']; ?></td>
+                    <td><?php echo $row['amount_total'] - $row['amount_paid'];?></td>
                     <td>
                         <!-- View Button -->
                         <button class="btn btn-info btn-sm view-order"
@@ -294,7 +332,7 @@ if (isset($_POST['complete_order'])) {
                             data-customer="<?php echo $row['customer_name']; ?>"
                             data-contact="<?php echo $row['customer_contact']; ?>"
                             data-address="<?php echo $row['customer_address']; ?>"
-                            data-delivery-date="<?php echo $row['delivery_date']; ?>" 
+                            data-date="<?php echo $row['order_date']; ?>"
                             data-status="<?php echo $row['status']; ?>"
                             data-amount="<?php echo $row['amount_paid']; ?>"
                             data-bs-toggle="modal"
@@ -338,9 +376,11 @@ if (isset($_POST['complete_order'])) {
                 <th>Contact</th>
                 <th>Address</th>
                 <th>Order Date</th>
+                <th>Delivery Date</th>
                 <th>Status</th>
+                <th>Amount Total</th>
                 <th>Amount Paid</th>
-                <th>Actions</th>
+                <th>Balance</th>
             </tr>
         </thead>
         <tbody>
@@ -351,38 +391,48 @@ if (isset($_POST['complete_order'])) {
                     <td><?php echo htmlspecialchars($row['customer_contact']); ?></td>
                     <td><?php echo htmlspecialchars($row['customer_address']); ?></td>
                     <td><?php echo $row['order_date']; ?></td>
+                    <td><?php echo $row['delivery_date']; ?></td>
                     <td><?php echo $row['status']; ?></td>
+                    <td><?php echo $row['amount_total']; ?></td>
                     <td><?php echo $row['amount_paid']; ?></td>
-                    <td>
-                        <!-- Change Order Status to Pending -->
-                        <?php
-                        if (isset($_POST['set_pending_' . $row['id']])) {
-                            $order_id = $row['id'];
-
-                            // Update status to 'Pending' in database
-                            $stmt = $conn->prepare("UPDATE orders SET status = 'Pending' WHERE id = ?");
-                            $stmt->bind_param("i", $order_id);
-                            $stmt->execute();
-                            $stmt->close();
-
-                            // Refresh page to reflect change
-                            header("Location: " . $_SERVER['PHP_SELF']);
-                            exit;
-                        }
-                        ?>
-
-                        <form method="POST" style="display:inline;">
-                            <button type="submit" name="set_pending_<?php echo $row['id']; ?>" class="btn btn-warning btn-sm">
-                                <i class="bi bi-exclamation-circle"></i> Set Pending
-                            </button>
-                        </form>
-
-                    </td>
+                    <td><?php echo $row['amount_total'] - $row['amount_paid'];?></td>
                 </tr>
             <?php } ?>
         </tbody>
     </table>
 </div>
+
+<!-- Cancelled Orders Table -->
+<h4>Cancelled Orders</h4>
+<div class="table-container">
+    <table id="completedOrdersTable" class="table table-hover">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Customer</th>
+                <th>Contact</th>
+                <th>Address</th>
+                <th>Order Date</th>
+                <th>Delivery Date</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php while ($row = $cancelled_orders_result->fetch_assoc()) { ?>
+                <tr>
+                    <td><?php echo $row['id']; ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_contact']); ?></td>
+                    <td><?php echo htmlspecialchars($row['customer_address']); ?></td>
+                    <td><?php echo $row['order_date']; ?></td>
+                    <td><?php echo $row['delivery_date']; ?></td>
+                    <td><?php echo $row['status']; ?></td>
+                </tr>
+            <?php } ?>
+        </tbody>
+    </table>
+</div>
+
 
 <!-- Add Order Modal -->
 <div class="modal fade" id="addOrderModal" tabindex="-1" aria-labelledby="addOrderModalLabel" aria-hidden="true">
@@ -476,7 +526,7 @@ if (isset($_POST['complete_order'])) {
                     <input type="text" id="editCustomerName" name="customer_name" placeholder="Customer Name" required class="form-control mb-2">
                     <input type="text" id="editCustomerContact" name="customer_contact" placeholder="Customer Contact" required class="form-control mb-2">
                     <input type="text" id="editCustomerAddress" name="customer_address" placeholder="Customer Address" required class="form-control mb-2">
-                    <input type="date" id="editDeliveryDate" name="delivery_date" required class="form-control mb-2">
+                    <input type="date" id="editOrderDate" name="order_date" required class="form-control mb-2">
                     <select name="status" id="editStatus" required class="form-control mb-2">
                         <option value="Pending">Pending</option>
                         <option value="Completed">Completed</option>
@@ -501,14 +551,12 @@ if (isset($_POST['complete_order'])) {
             <div class="modal-body">
                 <!-- Order Details -->
                 <div id="orderDetailsContent">
-                    <p><strong>Order ID:</strong> <span id="viewOrderId"></span></p>
-                    <p><strong>Customer Name:</strong> <span id="viewCustomerName"></span></p>
-                    <p><strong>Contact:</strong> <span id="viewCustomerContact"></span></p>
-                    <p><strong>Address:</strong> <span id="viewCustomerAddress"></span></p>
-                    <p><strong>Order Date:</strong> <span id="viewOrderDate"></span></p>
-                    <p><strong>Status:</strong> <span id="viewOrderStatus"></span></p>
-                    <p><strong>Amount Paid:</strong> <span id="viewAmountPaid"></span></p>
-
+                    <p><strong>Order ID:</strong> <span id="viewOrderId"><?php echo $order['id']; ?></span></p>
+                    <p><strong>Customer Name:</strong> <span id="viewCustomerName"><?php echo htmlspecialchars($order['customer_name']); ?></span></p>
+                    <p><strong>Contact:</strong> <span id="viewCustomerContact"><?php echo htmlspecialchars($order['customer_contact']); ?></span></p>
+                    <p><strong>Address:</strong> <span id="viewCustomerAddress"><?php echo htmlspecialchars($order['customer_address']); ?></span></p>
+                    <p><strong>Order Date:</strong> <span id="viewOrderDate"><?php echo $order['order_date']; ?></span></p>
+                    <p><strong>Status:</strong> <span id="viewOrderStatus"><?php echo $order['status']; ?></span></p>
                     <h5>Products Ordered</h5>
                     <table id="viewOrderProductsTable" class="table">
                         <thead>
@@ -520,9 +568,30 @@ if (isset($_POST['complete_order'])) {
                             </tr>
                         </thead>
                         <tbody id="viewOrderProducts">
-                            <!-- Product rows will be populated here -->
+                            <?php foreach ($products as $product) { ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($product['product_name']); ?></td>
+                                    <td><?php echo $product['quantity']; ?></td>
+                                    <td><?php echo $product['unique_price']; ?></td>
+                                    <td><?php echo $product['quantity'] * $product['unique_price']; ?></td>
+                                </tr>
+                            <?php } ?>
                         </tbody>
+                        <tfoot>
+                            <tr>
+                                <th colspan="3" class="text-end" style="text-decoration: solid;">Total Amount:</th>
+                                <th><?php echo number_format($total_amount, 2); ?></th>
+                            </tr>
+                        </tfoot>
                     </table>
+                    <!-- Amount Paid and Balance Left -->
+                    <div class="mt-4">
+                        <div class="row">
+                            <div class="col-md-10 text-end" style="color: green;">
+                                <p><strong>Amount Paid:</strong> <?php echo number_format($order['amount_paid'], 2); ?></p>
+                                <p><strong>Balance Left:</strong> <?php echo number_format($balance_left, 2); ?></p>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -554,7 +623,7 @@ $(document).ready(function() {
         $('#totalAmount').val(total.toFixed(2)); // Display total with 2 decimal places
     }
 
-    // Add Product Field (Event Delegation)
+     // Add Product Field
     $(document).on('click', '#addProductField', function() {
         let newField = `
             <div class="row mb-2">
@@ -582,7 +651,6 @@ $(document).ready(function() {
             </div>
         `;
         $('#orderDetails').append(newField);
-        calculateTotal(); // Recalculate total after adding a product
     });
 
     // Remove Product Field (Event Delegation)
@@ -603,13 +671,27 @@ $(document).ready(function() {
         calculateTotal(); // Recalculate total when quantity changes
     });
 
+    // Function to Calculate Total Amount
+    function calculateTotal() {
+        let total = 0;
+        $('.row').each(function() {
+            let quantity = $(this).find('.quantity').val();
+            let price = $(this).find('.price').val();
+            if (quantity && price) {
+                total += quantity * price;
+            }
+        });
+        $('#totalAmount').val(total.toFixed(2)); // Display total with 2 decimal places
+    }
+
+    
     // Populate Edit Modal with Data
     $(document).on('click', '.edit-order', function() {
         $('#editOrderId').val($(this).data('id'));
         $('#editCustomerName').val($(this).data('customer'));
         $('#editCustomerContact').val($(this).data('contact'));
         $('#editCustomerAddress').val($(this).data('address'));
-        $('#editDeliveryDate').val($(this).data('delivery-date'));
+        $('#editOrderDate').val($(this).data('date'));
         $('#editStatus').val($(this).data('status'));
         $('#editAmountPaid').val($(this).data('amount'));
     });
@@ -617,49 +699,33 @@ $(document).ready(function() {
 
     // Populate View Modal with Data
     $(document).on('click', '.view-order', function() {
-        // Populate basic order details
-        $('#viewOrderId').text($(this).data('id'));
-        $('#viewCustomerName').text($(this).data('customer'));
-        $('#viewCustomerContact').text($(this).data('contact'));
-        $('#viewCustomerAddress').text($(this).data('address'));
-        $('#viewOrderDate').text($(this).data('date'));
-        $('#viewOrderStatus').text($(this).data('status'));
-        $('#viewAmountPaid').text($(this).data('amount'));
+    let orderId = $(this).data('id');
+    window.location.href = 'orders.php?view_order_id=' + orderId;
+    });
+    // Remove view_order_id from the URL when the modal is closed
+    $('#viewOrderModal').on('hidden.bs.modal', function () {
+        // Get the current URL
+        let url = new URL(window.location.href);
 
-        // Fetch product details via AJAX
-        let orderId = $(this).data('id');
-        $.ajax({
-            url: 'orders.php', // Send request to the same file
-            type: 'POST',
-            data: { fetch_order_details: true, order_id: orderId },
-            success: function(response) {
-                console.log("Server Response:", response); // Debugging
-                let order = JSON.parse(response);
+        // Remove the view_order_id parameter
+        url.searchParams.delete('view_order_id');
 
-                // Clear previous product rows
-                $('#viewOrderProducts').empty();
-
-                // Add product rows
-                order.products.forEach(product => {
-                    let total = product.quantity * product.unique_price;
-                    $('#viewOrderProducts').append(`
-                        <tr>
-                            <td>${product.product_name}</td>
-                            <td>${product.quantity}</td>
-                            <td>${product.unique_price}</td>
-                            <td>${total.toFixed(2)}</td>
-                        </tr>
-                    `);
-                });
-            },
-            error: function(xhr, status, error) {
-                console.error("AJAX Error:", status, error); // Debugging
-            }
-        });
-    }); 
+        // Replace the current URL without the view_order_id parameter
+        window.history.replaceState({}, document.title, url.toString());
+    });
 
 });
+
 </script>
+
+<!-- This thingy prevent the page from loading again -->
+<?php if (isset($_GET['view_order_id'])) { ?>
+    <script>
+        $(document).ready(function() {
+            $('#viewOrderModal').modal('show');
+        });
+    </script>
+<?php } ?>
 
 </body>
 </html>

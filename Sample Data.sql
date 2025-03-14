@@ -30,20 +30,35 @@ INSERT INTO materials (supplier_id, material_type, quantity, created_by) VALUES
 (2, 'Titanium', 150, 4),
 (3, 'Plywood', 800, 5);
 
-INSERT INTO products (name, description, category, price, material_id, created_by) VALUES
-('Steel Hammer', 'Durable steel hammer for construction', 'Tools', 25.99, 1, 1),
-('Oak Chair', 'Handcrafted oak wood chair', 'Accessories', 120.50, 3, 2),
-('Plastic Cup', 'Reusable plastic cup', 'Other', 5.99, 5, 3),
-('Stainless Steel Knife', 'Sharp stainless steel kitchen knife', 'Tools', 15.99, 6, 4),
-('Cedar Table', 'Elegant cedar wood dining table', 'Accessories', 250.00, 7, 5),
-('Polypropylene Container', 'Durable plastic storage container', 'Other', 12.99, 8, 1),
-('Iron Anvil', 'Heavy-duty iron anvil for blacksmithing', 'Tools', 200.00, 9, 2),
-('Mahogany Bookshelf', 'Classic mahogany wood bookshelf', 'Accessories', 180.00, 10, 3),
-('PVC Pipe', 'Flexible PVC pipe for plumbing', 'Other', 8.99, 11, 4),
-('Copper Wire', 'High-conductivity copper wire', 'Tools', 10.50, 12, 5),
-('Birch Stool', 'Lightweight birch wood stool', 'Accessories', 45.00, 13, 1),
-('Nylon Rope', 'Strong nylon rope for outdoor use', 'Other', 7.99, 14, 2),
-('Titanium Screwdriver', 'Durable titanium screwdriver set', 'Tools', 35.00, 15, 3);
+INSERT INTO products (name, description, category, price, created_by) VALUES
+('Steel Hammer', 'Durable steel hammer for construction', 'Tools', 25.99, 1),
+('Oak Chair', 'Handcrafted oak wood chair', 'Accessories', 120.50, 2),
+('Plastic Cup', 'Reusable plastic cup', 'Other', 5.99, 3),
+('Stainless Steel Knife', 'Sharp stainless steel kitchen knife', 'Tools', 15.99, 4),
+('Cedar Table', 'Elegant cedar wood dining table', 'Accessories', 250.00, 5),
+('Polypropylene Container', 'Durable plastic storage container', 'Other', 12.99, 1),
+('Iron Anvil', 'Heavy-duty iron anvil for blacksmithing', 'Tools', 200.00, 2),
+('Mahogany Bookshelf', 'Classic mahogany wood bookshelf', 'Accessories', 180.00, 3),
+('PVC Pipe', 'Flexible PVC pipe for plumbing', 'Other', 8.99, 4),
+('Copper Wire', 'High-conductivity copper wire', 'Tools', 10.50, 5),
+('Birch Stool', 'Lightweight birch wood stool', 'Accessories', 45.00, 1),
+('Nylon Rope', 'Strong nylon rope for outdoor use', 'Other', 7.99, 2),
+('Titanium Screwdriver', 'Durable titanium screwdriver set', 'Tools', 35.00, 3);
+
+INSERT INTO product_materials (product_id, material_id) VALUES
+(1, 1),  -- Steel Hammer uses Steel
+(2, 3),  -- Oak Chair uses Oak Wood
+(3, 5),  -- Plastic Cup uses Polycarbonate
+(4, 6),  -- Stainless Steel Knife uses Stainless Steel
+(5, 7),  -- Cedar Table uses Cedar Wood
+(6, 8),  -- Polypropylene Container uses Polypropylene
+(7, 9),  -- Iron Anvil uses Iron
+(8, 10), -- Mahogany Bookshelf uses Mahogany Wood
+(9, 11), -- PVC Pipe uses PVC
+(10, 12),-- Copper Wire uses Copper
+(11, 13),-- Birch Stool uses Birch Wood
+(12, 14),-- Nylon Rope uses Nylon
+(13, 15);-- Titanium Screwdriver uses Titanium
 
 INSERT INTO inventory (product_id, quantity, created_by) VALUES
 (1, 50, 1),
@@ -59,3 +74,21 @@ INSERT INTO inventory (product_id, quantity, created_by) VALUES
 (11, 40, 1),
 (12, 300, 2),
 (13, 15, 3);
+
+INSERT INTO `orders` (`id`, `customer_id`, `order_date`, `delivery_date`, `status`, `amount_paid`, `created_at`, `updated_at`) VALUES
+(1, 1, '2025-03-14', '2025-03-30', 'Pending', 123.00, '2025-03-14 08:29:39', '2025-03-14 08:29:39'),
+(2, 2, '2025-03-14', '2025-03-22', 'Pending', 500.00, '2025-03-14 08:30:03', '2025-03-14 08:44:56'),
+(3, 3, '2025-03-14', '2025-03-22', 'Pending', 321.00, '2025-03-14 08:45:22', '2025-03-14 08:45:22'),
+(4, 4, '2025-03-14', '2025-04-01', 'Pending', 520.00, '2025-03-14 08:45:58', '2025-03-14 08:45:58');
+
+INSERT INTO `order_details` (`id`, `order_id`, `product_id`, `quantity`, `unique_price`) VALUES
+(1, 1, 2, 10, 120.50),
+(2, 1, 7, 25, 200.00),
+(3, 1, 11, 14, 45.00),
+(4, 2, 12, 32, 7.99),
+(5, 2, 8, 13, 180.00),
+(6, 2, 2, 42, 120.50),
+(7, 3, 4, 32, 15.99),
+(8, 4, 13, 4, 35.00),
+(9, 4, 8, 2, 180.00),
+(10, 4, 2, 1, 120.50);

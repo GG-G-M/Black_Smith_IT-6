@@ -153,7 +153,7 @@ CREATE TABLE invoice (
     FOREIGN KEY (customer_id) REFERENCES customer(id) ON DELETE CASCADE
 );
 
---individual items (products) in the invoice ✅
+-- individual items (products) in the invoice ✅
 CREATE TABLE invoice_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     invoice_id INT NOT NULL, -- Link to the invoice
