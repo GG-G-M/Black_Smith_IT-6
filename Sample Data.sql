@@ -30,6 +30,13 @@ INSERT INTO materials (supplier_id, material_type, quantity, created_by) VALUES
 (2, 'Titanium', 150, 4),
 (3, 'Plywood', 800, 5);
 
+INSERT INTO stock_material (supplier_id, material_id, quantity) VALUES
+(1, 1, 50),  -- Steel
+(2, 3, 100), -- Oak Wood
+(3, 5, 200), -- Polycarbonate
+(4, 6, 150), -- Stainless Steel
+(5, 7, 300); -- Cedar Wood
+
 INSERT INTO products (name, description, category, price, created_by) VALUES
 ('Steel Hammer', 'Durable steel hammer for construction', 'Tools', 25.99, 1),
 ('Oak Chair', 'Handcrafted oak wood chair', 'Accessories', 120.50, 2),
@@ -60,6 +67,14 @@ INSERT INTO product_materials (product_id, material_id) VALUES
 (12, 14),-- Nylon Rope uses Nylon
 (13, 15);-- Titanium Screwdriver uses Titanium
 
+
+INSERT INTO stock_product (material_id, material_consumed, product_produced) VALUES
+(1, 10, 1),  -- Steel used to produce Steel Hammer
+(3, 5, 2),   -- Oak Wood used to produce Oak Chair
+(5, 20, 3),  -- Polycarbonate used to produce Plastic Cup
+(6, 15, 4),  -- Stainless Steel used to produce Stainless Steel Knife
+(7, 8, 5);   -- Cedar Wood used to produce Cedar Table
+
 INSERT INTO inventory (product_id, quantity, created_by) VALUES
 (1, 50, 1),
 (2, 20, 2),
@@ -75,20 +90,54 @@ INSERT INTO inventory (product_id, quantity, created_by) VALUES
 (12, 300, 2),
 (13, 15, 3);
 
-INSERT INTO `orders` (`id`, `customer_id`, `order_date`, `delivery_date`, `status`, `amount_paid`, `created_at`, `updated_at`) VALUES
-(1, 1, '2025-03-14', '2025-03-30', 'Pending', 123.00, '2025-03-14 08:29:39', '2025-03-14 08:29:39'),
-(2, 2, '2025-03-14', '2025-03-22', 'Pending', 500.00, '2025-03-14 08:30:03', '2025-03-14 08:44:56'),
-(3, 3, '2025-03-14', '2025-03-22', 'Pending', 321.00, '2025-03-14 08:45:22', '2025-03-14 08:45:22'),
-(4, 4, '2025-03-14', '2025-04-01', 'Pending', 520.00, '2025-03-14 08:45:58', '2025-03-14 08:45:58');
+INSERT INTO customer (customer_name, customer_contact, customer_address, created_by) VALUES
+('ABC Corporation', '123-456-7890', '123 Business Rd, Metro City', 1),
+('XYZ Enterprises', '987-654-3210', '456 Commerce St, Downtown', 2),
+('Global Traders', '555-123-4567', '789 Trade Ave, Business Park', 3),
+('Prime Suppliers', '444-555-6666', '101 Supply Blvd, Industrial Zone', 4),
+('Elite Distributors', '777-888-9999', '202 Distribution Rd, Logistics Hub', 5);
 
-INSERT INTO `order_details` (`id`, `order_id`, `product_id`, `quantity`, `unique_price`) VALUES
-(1, 1, 2, 10, 120.50),
-(2, 1, 7, 25, 200.00),
-(3, 1, 11, 14, 45.00),
-(4, 2, 12, 32, 7.99),
-(5, 2, 8, 13, 180.00),
-(6, 2, 2, 42, 120.50),
-(7, 3, 4, 32, 15.99),
-(8, 4, 13, 4, 35.00),
-(9, 4, 8, 2, 180.00),
-(10, 4, 2, 1, 120.50);
+INSERT INTO orders (customer_id, order_date, delivery_date, status, amount_paid) VALUES
+(1, '2025-03-15', '2025-03-25', 'Completed', 1000.00),
+(2, '2025-03-16', '2025-03-26', 'Pending', 750.00),
+(3, '2025-03-17', '2025-03-27', 'Cancelled', 500.00),
+(4, '2025-03-18', '2025-03-28', 'Completed', 1200.00),
+(5, '2025-03-19', '2025-03-29', 'Pending', 900.00);
+
+INSERT INTO order_details (order_id, product_id, quantity, unique_price) VALUES
+(1, 1, 10, 25.99),  -- Steel Hammer for Order ID 1
+(1, 2, 5, 120.50),  -- Oak Chair for Order ID 1
+(2, 3, 20, 5.99),   -- Plastic Cup for Order ID 2
+(2, 4, 15, 15.99),  -- Stainless Steel Knife for Order ID 2
+(3, 5, 8, 250.00),  -- Cedar Table for Order ID 3
+(3, 6, 30, 12.99),  -- Polypropylene Container for Order ID 3
+(4, 7, 5, 200.00),  -- Iron Anvil for Order ID 4
+(4, 8, 10, 180.00), -- Mahogany Bookshelf for Order ID 4
+(5, 9, 25, 8.99),   -- PVC Pipe for Order ID 5
+(5, 10, 20, 10.50); -- Copper Wire for Order ID 5
+
+INSERT INTO invoice (user_id, invoice_date, customer_id, delivery_date, total_amount) VALUES
+(1, '2025-03-15', 1, '2025-03-25', 1000.00),
+(2, '2025-03-16', 2, '2025-03-26', 750.00),
+(3, '2025-03-17', 3, '2025-03-27', 500.00),
+(4, '2025-03-18', 4, '2025-03-28', 1200.00),
+(5, '2025-03-19', 5, '2025-03-29', 900.00);
+
+INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, amount) VALUES
+(1, 1, 10, 25.99, 259.90),  -- Steel Hammer
+(1, 2, 5, 120.50, 602.50),   -- Oak Chair
+(2, 3, 20, 5.99, 119.80),    -- Plastic Cup
+(2, 4, 15, 15.99, 239.85),   -- Stainless Steel Knife
+(3, 5, 8, 250.00, 2000.00),  -- Cedar Table
+(3, 6, 30, 12.99, 389.70),   -- Polypropylene Container
+(4, 7, 5, 200.00, 1000.00),  -- Iron Anvil
+(4, 8, 10, 180.00, 1800.00), -- Mahogany Bookshelf
+(5, 9, 25, 8.99, 224.75),    -- PVC Pipe
+(5, 10, 20, 10.50, 210.00);  -- Copper Wire
+
+INSERT INTO returns (order_id, customer_id, product_id, return_date, reason, status, created_by) VALUES
+(1, 1, 1, '2025-03-20', 'Defective product', 'Pending', 1),
+(2, 2, 2, '2025-03-21', 'Wrong item delivered', 'Approved', 2),
+(3, 3, 3, '2025-03-22', 'Customer changed mind', 'Rejected', 3),
+(4, 4, 4, '2025-03-23', 'Damaged during delivery', 'Pending', 4),
+(5, 5, 5, '2025-03-24', 'Product not as described', 'Approved', 5);

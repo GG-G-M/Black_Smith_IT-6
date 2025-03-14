@@ -5,82 +5,74 @@ include '../Handler/db.php'; // Adjust the path to your database connection file
 
 $full_name = $_SESSION['full_name']; // Get the user's full name
 
-// Handle Fetch Invoice Details Request (Internal Handler)
-if (isset($_POST['fetch_invoice_details'])) {
-    $invoice_id = $_POST['invoice_id'];
-
-    // Fetch invoice details
-    $invoice_sql = "
-        SELECT i.id, i.invoice_date, i.delivery_date, i.total, c.customer_name, u.username 
-        FROM invoice i
-        JOIN customer c ON i.customer_id = c.id
-        JOIN users u ON i.user_id = u.id
-        WHERE i.id = ?
-    ";
-    $stmt = $conn->prepare($invoice_sql);
-    $stmt->bind_param("i", $invoice_id);
-    $stmt->execute();
-    $invoice_result = $stmt->get_result();
-    $invoice = $invoice_result->fetch_assoc();
-
-    // Return JSON response
-    header('Content-Type: application/json');
-    echo json_encode($invoice);
-    exit;
-}
-
-// Handle Add Invoice from Completed Order
-if (isset($_POST['add_invoice_from_order'])) {
-    $order_id = $_POST['order_id'];
-    $invoice_date = $_POST['invoice_date'];
-    $delivery_date = $_POST['delivery_date'];
-    $user_id = $_SESSION['user_id']; // Assuming you store the user ID in the session
-
-    // Fetch order details
-    $order_sql = "
-        SELECT o.customer_id, o.amount_paid 
-        FROM orders o
-        WHERE o.id = ?
-    ";
-    $stmt = $conn->prepare($order_sql);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $order_result = $stmt->get_result();
-    $order = $order_result->fetch_assoc();
-
-    if ($order) {
-        // Insert the invoice
-        $stmt = $conn->prepare("INSERT INTO invoice (user_id, invoice_date, customer_id, delivery_date, total) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("isisd", $user_id, $invoice_date, $order['customer_id'], $delivery_date, $order['amount_paid']);
-        $stmt->execute();
-
-        $_SESSION['success'] = "Invoice created successfully from order.";
-        header("Location: sales.php"); // Redirect to the same page
-        exit;
-    } else {
-        $_SESSION['error'] = "Order not found.";
-        header("Location: sales.php");
-        exit;
-    }
-}
-
-// Fetch completed orders from the database
-$completed_orders_sql = "
-    SELECT o.id, o.order_date, o.amount_paid, c.customer_name 
-    FROM orders o
-    JOIN customer c ON o.customer_id = c.id
-    WHERE o.status = 'Completed'
-";
-$completed_orders_result = $conn->query($completed_orders_sql);
-
 // Fetch invoices from the database
 $invoice_sql = "
-    SELECT i.id, i.invoice_date, i.delivery_date, i.total, c.customer_name, u.username 
+    SELECT i.id, i.invoice_date, i.delivery_date, i.total_amount, 
+           c.customer_name, c.customer_contact, c.customer_address, 
+           u.last_name AS sold_by
     FROM invoice i
     JOIN customer c ON i.customer_id = c.id
     JOIN users u ON i.user_id = u.id
 ";
 $invoice_result = $conn->query($invoice_sql);
+
+if (!$invoice_result) {
+    die("Error fetching invoices: " . $conn->error); // Debugging: Print the error
+}
+
+// Fetch sales report data
+$total_invoices_sql = "SELECT COUNT(id) AS total_invoices FROM invoice";
+$total_revenue_sql = "SELECT SUM(total_amount) AS total_revenue FROM invoice";
+$total_products_sold_sql = "SELECT SUM(quantity) AS total_products_sold FROM invoice_items";
+
+$total_invoices_result = $conn->query($total_invoices_sql);
+$total_revenue_result = $conn->query($total_revenue_sql);
+$total_products_sold_result = $conn->query($total_products_sold_sql);
+
+$total_invoices = $total_invoices_result->fetch_assoc()['total_invoices'];
+$total_revenue = $total_revenue_result->fetch_assoc()['total_revenue'];
+$total_products_sold = $total_products_sold_result->fetch_assoc()['total_products_sold'];
+
+// Calculate average revenue per invoice
+$avg_revenue_per_invoice = $total_invoices > 0 ? $total_revenue / $total_invoices : 0;
+
+// Fetch top selling products
+$top_products_sql = "
+    SELECT p.name AS product_name, SUM(ii.quantity) AS total_quantity_sold
+    FROM invoice_items ii
+    JOIN products p ON ii.product_id = p.id
+    GROUP BY p.name
+    ORDER BY total_quantity_sold DESC
+    LIMIT 5
+";
+$top_products_result = $conn->query($top_products_sql);
+$top_products = $top_products_result->fetch_all(MYSQLI_ASSOC);
+
+// Fetch revenue by month
+$revenue_by_month_sql = "
+    SELECT DATE_FORMAT(invoice_date, '%Y-%m') AS month, SUM(total_amount) AS monthly_revenue
+    FROM invoice
+    GROUP BY DATE_FORMAT(invoice_date, '%Y-%m')
+    ORDER BY month DESC
+";
+$revenue_by_month_result = $conn->query($revenue_by_month_sql);
+$revenue_by_month = $revenue_by_month_result->fetch_all(MYSQLI_ASSOC);
+
+// Map month numbers to month names
+$month_names = [
+    '01' => 'January',
+    '02' => 'February',
+    '03' => 'March',
+    '04' => 'April',
+    '05' => 'May',
+    '06' => 'June',
+    '07' => 'July',
+    '08' => 'August',
+    '09' => 'September',
+    '10' => 'October',
+    '11' => 'November',
+    '12' => 'December'
+];
 ?>
 
 <!DOCTYPE html>
@@ -104,43 +96,101 @@ $invoice_result = $conn->query($invoice_sql);
 <div class="content">
     <h3 class="text-primary">Sales/Invoice - Hello <?php echo htmlspecialchars($full_name); ?></h3>
 
-    <!-- Add Invoice Button -->
-    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#addInvoiceModal">
-        <i class="bi bi-plus-circle-fill"></i> Add Invoice
-    </button>
+    <!-- Sales Report -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Invoices</h5>
+                    <p class="card-text display-4"><?php echo htmlspecialchars($total_invoices); ?></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Revenue</h5>
+                    <p class="card-text display-4">$<?php echo htmlspecialchars(number_format($total_revenue, 2)); ?></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Products Sold</h5>
+                    <p class="card-text display-4"><?php echo htmlspecialchars($total_products_sold); ?></p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Avg. Revenue/Invoice</h5>
+                    <p class="card-text display-4">$<?php echo htmlspecialchars(number_format($avg_revenue_per_invoice, 2)); ?></p>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <!-- Completed Orders Table -->
-    <h4>Completed Orders</h4>
-    <table id="completedOrdersTable" class="table table-hover">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Order Date</th>
-                <th>Customer</th>
-                <th>Amount Paid</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php while ($row = $completed_orders_result->fetch_assoc()) { ?>
-                <tr>
-                    <td><?php echo $row['id']; ?></td>
-                    <td><?php echo $row['order_date']; ?></td>
-                    <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
-                    <td><?php echo $row['amount_paid']; ?></td>
-                    <td>
-                        <!-- Create Invoice Button -->
-                        <button class="btn btn-primary btn-sm create-invoice"
-                            data-id="<?php echo $row['id']; ?>"
-                            data-bs-toggle="modal"
-                            data-bs-target="#createInvoiceModal">
-                            <i class="bi bi-file-earmark-plus"></i> Create Invoice
-                        </button>
-                    </td>
-                </tr>
-            <?php } ?>
-        </tbody>
-    </table>
+    <!-- Additional Metrics -->
+    <div class="row mb-4">
+        <!-- Top Selling Products -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Top Selling Products</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Quantity Sold</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($top_products as $product) { ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($product['product_name']); ?></td>
+                                    <td><?php echo htmlspecialchars($product['total_quantity_sold']); ?></td>
+                                </tr>
+                            <?php } ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Revenue by Month -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">Revenue by Month</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($revenue_by_month as $month) { 
+                                $month_number = substr($month['month'], 5, 2); // Extract month number from YYYY-MM
+                                $month_name = $month_names[$month_number]; // Get month name from the map
+                            ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($month_name); ?></td>
+                                    <td>$<?php echo htmlspecialchars(number_format($month['monthly_revenue'], 2)); ?></td>
+                                </tr>
+                            <?php } ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Invoices Table -->
     <h4>Invoices</h4>
@@ -151,7 +201,7 @@ $invoice_result = $conn->query($invoice_sql);
                 <th>Invoice Date</th>
                 <th>Delivery Date</th>
                 <th>Customer</th>
-                <th>Created By</th>
+                <th>Sold By</th>
                 <th>Total</th>
                 <th>Actions</th>
             </tr>
@@ -159,93 +209,22 @@ $invoice_result = $conn->query($invoice_sql);
         <tbody>
             <?php while ($row = $invoice_result->fetch_assoc()) { ?>
                 <tr>
-                    <td><?php echo $row['id']; ?></td>
-                    <td><?php echo $row['invoice_date']; ?></td>
-                    <td><?php echo $row['delivery_date']; ?></td>
+                    <td><?php echo htmlspecialchars($row['id']); ?></td>
+                    <td><?php echo htmlspecialchars($row['invoice_date']); ?></td>
+                    <td><?php echo htmlspecialchars($row['delivery_date']); ?></td>
                     <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
-                    <td><?php echo htmlspecialchars($row['username']); ?></td>
-                    <td><?php echo $row['total']; ?></td>
+                    <td><?php echo htmlspecialchars($row['sold_by']); ?></td>
+                    <td>$<?php echo htmlspecialchars(number_format($row['total_amount'], 2)); ?></td>
                     <td>
                         <!-- View Button -->
-                        <button class="btn btn-info btn-sm view-invoice"
-                            data-id="<?php echo $row['id']; ?>"
-                            data-bs-toggle="modal"
-                            data-bs-target="#viewInvoiceModal">
+                        <a href="invoice_details.php?view_invoice_id=<?php echo htmlspecialchars($row['id']); ?>" class="btn btn-info btn-sm">
                             <i class="bi bi-eye"></i> View
-                        </button>
-
-                        <!-- Edit Button -->
-                        <button class="btn btn-warning btn-sm edit-invoice"
-                            data-id="<?php echo $row['id']; ?>"
-                            data-bs-toggle="modal"
-                            data-bs-target="#editInvoiceModal">
-                            <i class="bi bi-pencil-square"></i> Edit
-                        </button>
-
-                        <!-- Delete Button -->
-                        <form method="POST" style="display:inline;">
-                            <input type="hidden" name="invoice_id" value="<?php echo $row['id']; ?>">
-                            <button type="submit" name="delete_invoice" class="btn btn-danger btn-sm"
-                                onclick="return confirm('Are you sure you want to delete this invoice?');">
-                                <i class="bi bi-trash"></i> Delete
-                            </button>
-                        </form>
+                        </a>
                     </td>
                 </tr>
             <?php } ?>
         </tbody>
     </table>
-</div>
-
-<!-- Create Invoice Modal -->
-<div class="modal fade" id="createInvoiceModal" tabindex="-1" aria-labelledby="createInvoiceModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createInvoiceModalLabel">Create Invoice from Order</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" id="createOrderId" name="order_id">
-                    <!-- Invoice Date -->
-                    <input type="date" name="invoice_date" required class="form-control mb-2">
-
-                    <!-- Delivery Date -->
-                    <input type="date" name="delivery_date" required class="form-control mb-2">
-
-                    <!-- Submit Button -->
-                    <button type="submit" name="add_invoice_from_order" class="btn btn-primary">Create Invoice</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- View Invoice Modal -->
-<div class="modal fade" id="viewInvoiceModal" tabindex="-1" aria-labelledby="viewInvoiceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="viewInvoiceModalLabel">Invoice Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Invoice Details -->
-                <div id="invoiceDetailsContent">
-                    <p><strong>Invoice ID:</strong> <span id="viewInvoiceId"></span></p>
-                    <p><strong>Invoice Date:</strong> <span id="viewInvoiceDate"></span></p>
-                    <p><strong>Delivery Date:</strong> <span id="viewDeliveryDate"></span></p>
-                    <p><strong>Customer:</strong> <span id="viewCustomer"></span></p>
-                    <p><strong>Created By:</strong> <span id="viewCreatedBy"></span></p>
-                    <p><strong>Total:</strong> <span id="viewTotal"></span></p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Scripts -->
@@ -255,39 +234,7 @@ $invoice_result = $conn->query($invoice_sql);
 <script>
 $(document).ready(function() {
     // Initialize DataTables
-    $('#completedOrdersTable, #invoicesTable').DataTable();
-
-    // Handle Create Invoice Button Click
-    $(document).on('click', '.create-invoice', function() {
-        let orderId = $(this).data('id');
-        $('#createOrderId').val(orderId); // Set the order ID in the modal
-    });
-
-    // Handle View Button Click
-    $(document).on('click', '.view-invoice', function() {
-        let invoiceId = $(this).data('id');
-
-        // Fetch invoice details via AJAX
-        $.ajax({
-            url: 'sales.php', // Send request to the same file
-            type: 'POST',
-            data: { fetch_invoice_details: true, invoice_id: invoiceId },
-            success: function(response) {
-                let invoice = JSON.parse(response);
-
-                // Populate the modal with invoice details
-                $('#viewInvoiceId').text(invoice.id);
-                $('#viewInvoiceDate').text(invoice.invoice_date);
-                $('#viewDeliveryDate').text(invoice.delivery_date);
-                $('#viewCustomer').text(invoice.customer_name);
-                $('#viewCreatedBy').text(invoice.username);
-                $('#viewTotal').text(invoice.total);
-            },
-            error: function(xhr, status, error) {
-                console.error("AJAX Error:", status, error);
-            }
-        });
-    });
+    $('#invoicesTable').DataTable();
 });
 </script>
 </body>
